@@ -1,0 +1,7 @@
+{
+  "name": "Remix: Remix: Oculus",
+  "description": "A photorealistic procedural human eye simulation using React Three Fiber and custom GLSL shaders.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
