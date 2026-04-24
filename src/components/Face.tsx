@@ -38,6 +38,7 @@ import {
   type EyeRotationLimits,
   type EyeRotationLimitsMutable,
 } from '../features/face/eyeFit';
+import type { MouthSafetyProfile } from '../features/face/mouthSafety';
 import Eye from './Eye';
 
 const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
@@ -49,6 +50,7 @@ export type FaceProps = ThreeElements['group'] & {
   showCustomEyes?: boolean;
   eyeProps: FaceEyeProps;
   faceTracking?: FaceTwinTracking | null;
+  mouthSafety?: MouthSafetyProfile;
 };
 
 export default function Face({
@@ -56,6 +58,7 @@ export default function Face({
   showCustomEyes = true,
   eyeProps,
   faceTracking,
+  mouthSafety,
   ...props
 }: FaceProps) {
   const gl = useThree((state) => state.gl);
@@ -364,7 +367,7 @@ export default function Face({
       rawMorphValues[key] = nextValue;
     }
 
-    const nextMorphValues = adaptFacecapBlendshapes(rawMorphValues);
+    const nextMorphValues = adaptFacecapBlendshapes(rawMorphValues, mouthSafety);
 
     for (const key of FACS_CONTROL_KEYS) {
       if (Math.abs(nextMorphValues[key] - previousMorphValuesRef.current[key]) > 0.001) {

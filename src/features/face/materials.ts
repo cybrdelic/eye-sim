@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  applyMouthSafetyProfile,
+  DEFAULT_MOUTH_SAFETY_PROFILE,
+  type MouthSafetyProfile,
+} from './mouthSafety';
 
 export const FACS_CONTROL_KEYS = [
   'eyeBlink_L',
@@ -338,7 +343,10 @@ export function updateSkinUniforms(
   uniforms.deepTint.value.copy(SKIN_COLOR_DEEP).lerp(SKIN_COLOR_FLUSH, uniforms.flushStrength.value * 0.08);
 }
 
-export function adaptFacecapBlendshapes(blendshapes: Record<FacsControlKey, number>) {
+export function adaptFacecapBlendshapes(
+  blendshapes: Record<FacsControlKey, number>,
+  mouthSafety: MouthSafetyProfile = DEFAULT_MOUTH_SAFETY_PROFILE,
+) {
   const next = { ...blendshapes };
   const smile = Math.max(next.mouthSmile_L ?? 0, next.mouthSmile_R ?? 0);
   const stretch = Math.max(next.mouthStretch_L ?? 0, next.mouthStretch_R ?? 0);
@@ -363,16 +371,20 @@ export function adaptFacecapBlendshapes(blendshapes: Record<FacsControlKey, numb
   next.mouthPucker = THREE.MathUtils.clamp((next.mouthPucker ?? 0) * 0.82, 0, 0.58);
   next.tongueOut = THREE.MathUtils.clamp(next.tongueOut ?? 0, 0, 0.08);
 
-  return next;
+  return applyMouthSafetyProfile(next, mouthSafety);
 }
 
 export function isDentalCandidateMesh(mesh: THREE.Mesh, material: THREE.Material) {
   const combinedName = `${mesh.name} ${mesh.parent?.name ?? ''} ${material.name}`.toLowerCase();
-  return /(teeth|tooth|gum|tongue|mouthinner|mouth_inner|saliva)/.test(combinedName);
+  return mesh.name === 'mesh_3' || /(teeth|tooth|gum|tongue|mouthinner|mouth_inner|saliva)/.test(combinedName);
 }
 
 function isSkinCandidateMesh(mesh: THREE.Mesh, material: THREE.Material) {
   const combinedName = `${mesh.name} ${material.name}`.toLowerCase();
+  if (mesh.name === 'mesh_3') {
+    return false;
+  }
+
   if (/(eye|cornea|iris|pupil|teeth|tooth|gum|tongue|mouthinner|mouth_inner|saliva|lash)/.test(combinedName)) {
     return false;
   }
@@ -395,13 +407,13 @@ export function createDentalMaterial(originalMaterial: THREE.Material, mesh: THR
   const bboxMin = geometry.boundingBox?.min.clone() ?? new THREE.Vector3(-1, -1, -1);
   const bboxMax = geometry.boundingBox?.max.clone() ?? new THREE.Vector3(1, 1, 1);
   const material = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color('#efe7de'),
-    roughness: 0.34,
+    color: new THREE.Color('#e5d9cf'),
+    roughness: 0.62,
     metalness: 0,
-    envMapIntensity: 0.32,
-    clearcoat: 0.12,
-    clearcoatRoughness: 0.18,
-    ior: 1.53,
+    envMapIntensity: 0.16,
+    clearcoat: 0.04,
+    clearcoatRoughness: 0.38,
+    ior: 1.45,
   });
   material.name = `dental-${originalMaterial.name || mesh.name}`;
   material.onBeforeCompile = (shader) => {
@@ -440,17 +452,18 @@ float dentalBand(float value, float center, float radius, float blur) {
   float incisorMask = dentalBand(vDentalLocalPosition.x, 0.5, 0.22, 0.08);
   float gumMask = smoothstep(0.72, 0.98, vDentalLocalPosition.y) * (1.0 - dentalDepth * 0.45);
   float rootShadow = smoothstep(0.56, 0.92, vDentalLocalPosition.y) * smoothstep(0.35, 0.95, vDentalLocalPosition.z);
-  vec3 enamel = vec3(0.97, 0.95, 0.91);
-  vec3 dentin = vec3(0.86, 0.79, 0.72);
-  vec3 gumTint = vec3(0.52, 0.28, 0.28);
-  vec3 toothColor = mix(dentin, enamel, incisorMask * 0.45 + 0.4);
-  toothColor = mix(toothColor, gumTint, gumMask * 0.65);
-  toothColor *= 1.0 - rootShadow * 0.35;
-  diffuseColor.rgb = toothColor;
+  float mouthShadow = smoothstep(0.08, 0.72, vDentalLocalPosition.z) * (1.0 - incisorMask * 0.28);
+  vec3 enamel = vec3(0.91, 0.87, 0.80);
+  vec3 dentin = vec3(0.69, 0.60, 0.52);
+  vec3 gumTint = vec3(0.34, 0.18, 0.18);
+  vec3 toothColor = mix(dentin, enamel, incisorMask * 0.34 + 0.38);
+  toothColor = mix(toothColor, gumTint, gumMask * 0.48);
+  toothColor *= 1.0 - rootShadow * 0.48 - mouthShadow * 0.22;
+  diffuseColor.rgb = mix(diffuseColor.rgb, toothColor, 0.92);
 }`,
     );
   };
-  material.customProgramCacheKey = () => 'dental-v2';
+  material.customProgramCacheKey = () => 'dental-v3';
   return material;
 }
 
