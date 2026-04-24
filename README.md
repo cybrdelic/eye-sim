@@ -35,7 +35,7 @@ Prerequisite: Node.js 22+ and `pnpm`.
 - `src/routes/MainRoute.tsx` is the product surface.
 - `src/routes/*LabRoute.tsx` and other `/labs/*` routes are investigation surfaces, not product defaults.
 - `src/features/presentation/` contains shot definitions for camera framing, scale, defaults, and release-safe interaction boundaries.
-- `src/features/tracking/` contains the MediaPipe tracking pipeline.
+- `src/features/tracking/` contains the tracking adapter contract plus MediaPipe pipeline modules.
 - `src/features/face/` contains face runtime, eye-fit, and material modules.
 - `data/conditioning/` stores generated conditioning payloads and manifests.
 - `scripts/conditioning/probes/` contains one-off inspection probes for the conditioning bake.
