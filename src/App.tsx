@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import MainRoute from './routes/MainRoute';
 
 const BeautyMaterialLabRoute = lazy(() => import('./routes/BeautyMaterialLabRoute'));
+const ProceduralHeadRoute = lazy(() => import('./routes/ProceduralHeadRoute'));
 const MaterialParityRoute = lazy(() => import('./routes/MaterialParityRoute'));
 const AssetConditioningRoute = lazy(() => import('./routes/AssetConditioningRoute'));
 
@@ -19,6 +20,14 @@ export default function App() {
         element={(
           <Suspense fallback={<RouteFallback label="beauty lab" />}>
             <BeautyMaterialLabRoute />
+          </Suspense>
+        )}
+      />
+      <Route
+        path="/labs/procedural-head"
+        element={(
+          <Suspense fallback={<RouteFallback label="procedural head" />}>
+            <ProceduralHeadRoute />
           </Suspense>
         )}
       />
