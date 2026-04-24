@@ -7,7 +7,6 @@ import * as THREE from 'three';
 import { KTX2Loader } from 'three-stdlib';
 import type { FaceTwinTracking } from '../hooks/useMediaPipeFaceTwin';
 import {
-  adaptFacecapBlendshapes,
   BEAUTY_SHADER_VERSION,
   createDentalMaterial,
   createSkinUniformRefs,
@@ -16,14 +15,10 @@ import {
   createWrinkleUniformRefs,
   FACS_CONTROL_DEFAULTS,
   FACS_CONTROL_KEYS,
-  FACS_PREVIOUS_VALUES,
-  HEAD_RIG_TRACKING_MAP,
   isDentalCandidateMesh,
   type FaceViewMode,
   type FacsControlKey,
   type SkinShaderControls,
-  simulateWrinkleUniforms,
-  updateSkinUniforms,
 } from '../features/face/materials';
 import {
   computeEyeBasisCorrection,
@@ -39,6 +34,7 @@ import {
   type EyeRotationLimitsMutable,
 } from '../features/face/eyeFit';
 import type { MouthSafetyProfile } from '../features/face/mouthSafety';
+import { createFaceRigRuntimeState, updateFaceRigRuntime, type FaceRigMorphBinding } from '../features/face/runtime';
 import Eye from './Eye';
 
 const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
@@ -165,7 +161,7 @@ export default function Face({
   const leftLimitScratch = useMemo(() => createEyeLimitScratch(), []);
   const rightLimitScratch = useMemo(() => createEyeLimitScratch(), []);
   const sharedSaccadeTarget = useMemo(() => new THREE.Vector2(), []);
-  const sharedSaccadeState = useRef({ nextMoveTime: 0 });
+  const faceRigRuntimeRef = useRef(createFaceRigRuntimeState(sharedSaccadeTarget));
   const wrinkleUniformsRef = useRef(createWrinkleUniformRefs());
   const wrinkleSimulationRef = useRef(createWrinkleSimulationState());
   const skinUniformsRef = useRef(createSkinUniformRefs());
@@ -173,7 +169,6 @@ export default function Face({
     autoScale: false,
     suspiciousSize: false,
   });
-  const previousMorphValuesRef = useRef<Record<FacsControlKey, number>>({ ...FACS_PREVIOUS_VALUES });
 
   const morphBindings = useMemo(() => {
     return morphMeshes.map((mesh) => {
@@ -184,7 +179,7 @@ export default function Face({
       }
       return { mesh, indices };
     });
-  }, [morphMeshes]);
+  }, [morphMeshes]) satisfies FaceRigMorphBinding[];
 
   const headNode = nodes.grp_transform || nodes.head || nodes.Head;
 
@@ -357,75 +352,24 @@ export default function Face({
 
   useFrame((_, delta) => {
     const t = performance.now() * 0.001;
-    const trackedBlendshapes = faceTracking?.status === 'tracking' ? faceTracking.blendshapes : null;
-    const trackedHead = faceTracking?.status === 'tracking' ? faceTracking.headRotation : null;
-
-    let morphsChanged = false;
-    const rawMorphValues = {} as Record<FacsControlKey, number>;
-    for (const key of FACS_CONTROL_KEYS) {
-      const nextValue = trackedBlendshapes?.[key] ?? facsControls[key];
-      rawMorphValues[key] = nextValue;
-    }
-
-    const nextMorphValues = adaptFacecapBlendshapes(rawMorphValues, mouthSafety);
-
-    for (const key of FACS_CONTROL_KEYS) {
-      if (Math.abs(nextMorphValues[key] - previousMorphValuesRef.current[key]) > 0.001) {
-        morphsChanged = true;
-      }
-    }
-
-    simulateWrinkleUniforms(
-      wrinkleUniformsRef.current,
-      wrinkleSimulationRef.current,
-      nextMorphValues,
+    updateFaceRigRuntime({
+      time: t,
       delta,
-    );
-    updateSkinUniforms(skinUniformsRef.current, nextMorphValues, skinShaderControls);
-
-    if (morphsChanged) {
-      for (const binding of morphBindings) {
-        const influences = binding.mesh.morphTargetInfluences;
-        if (!influences) continue;
-
-        for (const key of FACS_CONTROL_KEYS) {
-          const index = binding.indices[key];
-          if (index !== undefined) influences[index] = nextMorphValues[key];
-        }
-      }
-
-      previousMorphValuesRef.current = nextMorphValues;
-    }
-
-    if (headNode) {
-      const headPitch = trackedHead?.pitch ?? boneControls.headPitch;
-      const headYaw = trackedHead?.yaw ?? boneControls.headYaw;
-      const headRoll = trackedHead?.roll ?? boneControls.headRoll;
-
-      headNode.rotation.x = headPitch * HEAD_RIG_TRACKING_MAP.pitchSign;
-      headNode.rotation.y = headRoll * HEAD_RIG_TRACKING_MAP.rollToYSign;
-      headNode.rotation.z = headYaw * HEAD_RIG_TRACKING_MAP.yawToZSign;
-    }
-
-    if (leftEyeNode) leftEyeNode.rotation.y = trackedHead ? 0 : boneControls.leftEyeYaw;
-    if (rightEyeNode) rightEyeNode.rotation.y = trackedHead ? 0 : boneControls.rightEyeYaw;
-
-    if (!trackedHead && eyeProps?.animationMode === 'saccades' && t > sharedSaccadeState.current.nextMoveTime) {
-      const isMacro = Math.random() > 0.8;
-      if (isMacro) {
-        sharedSaccadeTarget.x = (Math.random() - 0.5) * 1.2;
-        sharedSaccadeTarget.y = (Math.random() - 0.5) * 0.8;
-      } else {
-        sharedSaccadeTarget.x += (Math.random() - 0.5) * 0.2;
-        sharedSaccadeTarget.y += (Math.random() - 0.5) * 0.2;
-      }
-
-      sharedSaccadeTarget.x = THREE.MathUtils.clamp(sharedSaccadeTarget.x, -0.8, 0.8);
-      sharedSaccadeTarget.y = THREE.MathUtils.clamp(sharedSaccadeTarget.y, -0.5, 0.5);
-
-      const pause = isMacro ? (Math.random() * 1.0 + 0.5) : (Math.random() * 0.2 + 0.05);
-      sharedSaccadeState.current.nextMoveTime = t + pause;
-    }
+      faceTracking,
+      facsControls,
+      boneControls,
+      skinShaderControls,
+      mouthSafety,
+      morphBindings,
+      headNode,
+      leftEyeNode,
+      rightEyeNode,
+      wrinkleUniforms: wrinkleUniformsRef.current,
+      wrinkleSimulation: wrinkleSimulationRef.current,
+      skinUniforms: skinUniformsRef.current,
+      state: faceRigRuntimeRef.current,
+      eyeAnimationMode: eyeProps.animationMode,
+    });
 
     if (!dynamicEyeLimitsEnabled || !showCustomEyes || !occluderMeshes.length) return;
 
