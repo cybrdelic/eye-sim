@@ -44,7 +44,7 @@ export default function AssetConditioningRoute() {
 
         <div className="mt-10 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
           <section className="rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.12),_transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))] p-8 shadow-2xl shadow-black/20">
-            <p className="text-xs uppercase tracking-[0.32em] text-stone-400">Clean Page</p>
+            <p className="text-xs uppercase tracking-[0.32em] text-amber-200/70">Lab Route</p>
             <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-stone-50">Offline Asset Conditioning Pipeline</h1>
             <p className="mt-4 max-w-3xl text-base leading-7 text-stone-300">
               This route replaces the failed coordinate-hack approach with an asset-first pipeline. Facial regions should be authored once, baked into stable data, and only modulated at runtime. The beauty lab should consume conditioned inputs, not discover anatomy from shared materials and raw vertex positions.

@@ -32,6 +32,9 @@ function RouteShell({
     <div className="relative h-screen w-full overflow-hidden bg-[#1a1a1e] text-stone-100">
       <div className="absolute left-0 right-0 top-0 z-30 flex items-center justify-between px-4 py-3">
         <AppNav />
+        <div className="pointer-events-none hidden rounded-full border border-amber-300/15 bg-amber-300/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-amber-100/75 md:block">
+          Isolated Lab Route
+        </div>
         <div className="flex items-center gap-1 border border-white/10 bg-black/60 p-0.5">
           <button
             onClick={() => setMode('baseline')}
