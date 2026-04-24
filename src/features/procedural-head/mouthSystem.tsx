@@ -1,6 +1,8 @@
+import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type {
+  ProceduralExpressionName,
   ProceduralExpressionValues,
   ProceduralHeadIdentity,
   ProceduralHeadMaterialMode,
@@ -15,12 +17,30 @@ import {
 } from './materials';
 import { clamp, gaussian2D, lerp, smoothstep } from './random';
 
-function setMorphInfluences(mesh: THREE.Mesh | null, expressions: ProceduralExpressionValues, strength: number) {
-  if (!mesh?.morphTargetDictionary || !mesh.morphTargetInfluences) return;
-  for (const [name, index] of Object.entries(mesh.morphTargetDictionary)) {
-    mesh.morphTargetInfluences[index] = clamp((expressions[name as keyof ProceduralExpressionValues] ?? 0) * strength);
-  }
-}
+type LipExpressionName =
+  | 'jawOpen'
+  | 'mouthSmile_L'
+  | 'mouthSmile_R'
+  | 'mouthFunnel'
+  | 'mouthPucker'
+  | 'mouthPress_L'
+  | 'mouthPress_R';
+
+const LIP_EXPRESSION_NAMES: LipExpressionName[] = [
+  'jawOpen',
+  'mouthSmile_L',
+  'mouthSmile_R',
+  'mouthFunnel',
+  'mouthPucker',
+  'mouthPress_L',
+  'mouthPress_R',
+];
+
+type ProceduralLipGeometryBundle = {
+  geometry: THREE.BufferGeometry;
+  basePositions: Float32Array;
+  expressionDeltas: Record<LipExpressionName, Float32Array>;
+};
 
 function createLipPoint(t: number, row: number, identity: ProceduralHeadIdentity) {
   const lipWidth = lerp(0.32, 0.48, identity.faceWidth);
@@ -32,7 +52,7 @@ function createLipPoint(t: number, row: number, identity: ProceduralHeadIdentity
   return new THREE.Vector3(x, y, z);
 }
 
-export function createProceduralLipGeometry(identity: ProceduralHeadIdentity, quality: ProceduralHeadQuality) {
+export function createProceduralLipGeometry(identity: ProceduralHeadIdentity, quality: ProceduralHeadQuality): ProceduralLipGeometryBundle {
   const config = PROCEDURAL_QUALITY_CONFIG[quality];
   const segments = Math.max(48, Math.round(config.radialSegments * 0.75));
   const rows = quality === 'hero' ? 7 : quality === 'balanced' ? 5 : 4;
@@ -64,18 +84,18 @@ export function createProceduralLipGeometry(identity: ProceduralHeadIdentity, qu
     }
   }
 
+  const basePositions = Float32Array.from(positions);
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('position', new THREE.BufferAttribute(basePositions.slice(), 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
-  geometry.morphTargetsRelative = true;
 
   const base = geometry.getAttribute('position') as THREE.BufferAttribute;
-  const morphNames = ['jawOpen', 'mouthSmile_L', 'mouthSmile_R', 'mouthFunnel', 'mouthPucker', 'mouthPress_L', 'mouthPress_R'];
-  geometry.morphAttributes.position = morphNames.map((name) => {
+  const expressionDeltas = {} as Record<LipExpressionName, Float32Array>;
+  for (const name of LIP_EXPRESSION_NAMES) {
     const deltas = new Float32Array(base.count * 3);
     const point = new THREE.Vector3();
     for (let i = 0; i < base.count; i += 1) {
@@ -110,12 +130,38 @@ export function createProceduralLipGeometry(identity: ProceduralHeadIdentity, qu
       deltas[i * 3 + 1] = delta.y;
       deltas[i * 3 + 2] = delta.z;
     }
-    const attr = new THREE.BufferAttribute(deltas, 3);
-    attr.name = name;
-    return attr;
-  });
+    expressionDeltas[name] = deltas;
+  }
 
-  return geometry;
+  return { geometry, basePositions, expressionDeltas };
+}
+
+function applyProceduralLipExpressions(
+  geometry: THREE.BufferGeometry,
+  basePositions: Float32Array,
+  expressionDeltas: Record<LipExpressionName, Float32Array>,
+  expressions: ProceduralExpressionValues,
+  strength: number,
+) {
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const target = position.array as Float32Array;
+  target.set(basePositions);
+
+  for (const name of LIP_EXPRESSION_NAMES) {
+    const influence = clamp((expressions[name as ProceduralExpressionName] ?? 0) * strength);
+    if (influence <= 0) continue;
+
+    const delta = expressionDeltas[name];
+    for (let i = 0; i < target.length; i += 1) {
+      target[i] += delta[i] * influence;
+    }
+  }
+
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  const normal = geometry.getAttribute('normal') as THREE.BufferAttribute | undefined;
+  if (normal) normal.needsUpdate = true;
+  geometry.computeBoundingSphere();
 }
 
 function Tooth({
@@ -156,23 +202,25 @@ export function ProceduralMouthSystem({
 }) {
   const lipsRef = useRef<THREE.Mesh>(null);
   const lowerMouthRef = useRef<THREE.Group>(null);
-  const lipGeometry = useMemo(() => createProceduralLipGeometry(identity, quality), [identity, quality]);
+  const lipBundle = useMemo(() => createProceduralLipGeometry(identity, quality), [identity, quality]);
+  const invalidate = useThree((state) => state.invalidate);
   const jawOpen = clamp((expressions.jawOpen ?? 0) * strength);
 
-  useEffect(() => () => lipGeometry.dispose(), [lipGeometry]);
+  useEffect(() => () => lipBundle.geometry.dispose(), [lipBundle]);
 
   useEffect(() => {
-    setMorphInfluences(lipsRef.current, expressions, strength);
+    applyProceduralLipExpressions(lipBundle.geometry, lipBundle.basePositions, lipBundle.expressionDeltas, expressions, strength);
     if (lowerMouthRef.current) {
       lowerMouthRef.current.position.y = -jawOpen * 0.105;
       lowerMouthRef.current.position.z = -jawOpen * 0.026;
       lowerMouthRef.current.rotation.x = jawOpen * -0.08;
     }
-  }, [expressions, jawOpen, strength]);
+    invalidate();
+  }, [expressions, invalidate, jawOpen, lipBundle, strength]);
 
   return (
     <group>
-      <mesh ref={lipsRef} geometry={lipGeometry}>
+      <mesh ref={lipsRef} geometry={lipBundle.geometry}>
         <ProceduralLipMaterial mode={mode} />
       </mesh>
 

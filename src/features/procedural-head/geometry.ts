@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type {
   ProceduralExpressionName,
+  ProceduralExpressionValues,
   ProceduralHeadIdentity,
   ProceduralHeadQuality,
 } from './types';
@@ -18,6 +19,8 @@ export type ProceduralHeadAnchors = {
 export type ProceduralHeadGeometryBundle = {
   geometry: THREE.BufferGeometry;
   anchors: ProceduralHeadAnchors;
+  basePositions: Float32Array;
+  expressionDeltas: Record<ProceduralExpressionName, Float32Array>;
 };
 
 type VertexMeta = {
@@ -191,6 +194,34 @@ function createExpressionDelta(name: ProceduralExpressionName, point: THREE.Vect
   return delta;
 }
 
+export function applyProceduralHeadExpressions(
+  geometry: THREE.BufferGeometry,
+  basePositions: Float32Array,
+  expressionDeltas: Record<ProceduralExpressionName, Float32Array>,
+  expressions: ProceduralExpressionValues,
+  strength: number,
+) {
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const target = position.array as Float32Array;
+  target.set(basePositions);
+
+  for (const name of PROCEDURAL_EXPRESSION_NAMES) {
+    const influence = clamp((expressions[name] ?? 0) * strength);
+    if (influence <= 0) continue;
+
+    const delta = expressionDeltas[name];
+    for (let i = 0; i < target.length; i += 1) {
+      target[i] += delta[i] * influence;
+    }
+  }
+
+  position.needsUpdate = true;
+  geometry.computeVertexNormals();
+  const normal = geometry.getAttribute('normal') as THREE.BufferAttribute | undefined;
+  if (normal) normal.needsUpdate = true;
+  geometry.computeBoundingSphere();
+}
+
 export function createProceduralHeadGeometry(
   identity: ProceduralHeadIdentity,
   quality: ProceduralHeadQuality,
@@ -229,18 +260,19 @@ export function createProceduralHeadGeometry(
     }
   }
 
+  const basePositions = Float32Array.from(positions);
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('position', new THREE.BufferAttribute(basePositions.slice(), 3));
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  geometry.morphTargetsRelative = true;
 
   const base = geometry.getAttribute('position') as THREE.BufferAttribute;
-  geometry.morphAttributes.position = PROCEDURAL_EXPRESSION_NAMES.map((name) => {
+  const expressionDeltas = {} as Record<ProceduralExpressionName, Float32Array>;
+  for (const name of PROCEDURAL_EXPRESSION_NAMES) {
     const deltas = new Float32Array(base.count * 3);
     const point = new THREE.Vector3();
     for (let i = 0; i < base.count; i += 1) {
@@ -250,10 +282,8 @@ export function createProceduralHeadGeometry(
       deltas[i * 3 + 1] = delta.y;
       deltas[i * 3 + 2] = delta.z;
     }
-    const attr = new THREE.BufferAttribute(deltas, 3);
-    attr.name = name;
-    return attr;
-  });
+    expressionDeltas[name] = deltas;
+  }
 
   const eyeSpacing = lerp(0.22, 0.34, identity.eyeSpacing);
   const anchors = {
@@ -264,5 +294,5 @@ export function createProceduralHeadGeometry(
     chin: new THREE.Vector3(0, -0.84, 0.42),
   };
 
-  return { geometry, anchors };
+  return { geometry, anchors, basePositions, expressionDeltas };
 }

@@ -13,19 +13,12 @@ import type {
   ProceduralHeadStats,
 } from './types';
 import { PROCEDURAL_QUALITY_CONFIG } from './types';
-import { createProceduralHeadGeometry } from './geometry';
+import { applyProceduralHeadExpressions, createProceduralHeadGeometry } from './geometry';
 import { createProceduralSkinTexturePack } from './maps';
 import { ProceduralBeautyMaterial, ProceduralEyeMaterials } from './materials';
 import { ProceduralMouthSystem } from './mouthSystem';
 
 export type ProceduralHeadRendererMode = 'webgpu' | 'webgl';
-
-function setMorphInfluences(mesh: THREE.Mesh | null, expressions: ProceduralExpressionValues, strength: number) {
-  if (!mesh?.morphTargetDictionary || !mesh.morphTargetInfluences) return;
-  for (const [name, index] of Object.entries(mesh.morphTargetDictionary)) {
-    mesh.morphTargetInfluences[index] = Math.min(1, Math.max(0, (expressions[name as keyof ProceduralExpressionValues] ?? 0) * strength));
-  }
-}
 
 function SceneGrade() {
   const { gl, scene } = useThree();
@@ -99,6 +92,7 @@ function ProceduralHeadRig({
   strength: number;
 }) {
   const headRef = useRef<THREE.Mesh>(null);
+  const invalidate = useThree((state) => state.invalidate);
   const bundle = useMemo(() => createProceduralHeadGeometry(identity, quality), [identity, quality]);
   const textures = useMemo(() => createProceduralSkinTexturePack(identity, quality), [identity, quality]);
 
@@ -111,15 +105,15 @@ function ProceduralHeadRig({
   }, [textures]);
 
   useEffect(() => {
-    headRef.current?.updateMorphTargets();
-    setMorphInfluences(headRef.current, expressions, strength);
-  }, [bundle, expressions, strength]);
+    applyProceduralHeadExpressions(bundle.geometry, bundle.basePositions, bundle.expressionDeltas, expressions, strength);
+    invalidate();
+  }, [bundle, expressions, invalidate, strength]);
 
   useEffect(() => {
     onStats?.({
       vertices: bundle.geometry.getAttribute('position').count,
       triangles: (bundle.geometry.index?.count ?? 0) / 3,
-      morphTargets: bundle.geometry.morphAttributes.position?.length ?? 0,
+      morphTargets: Object.keys(bundle.expressionDeltas).length,
       mapResolution: textures.resolution,
     });
   }, [bundle, onStats, textures.resolution]);
@@ -172,6 +166,7 @@ export function ProceduralHeadCanvas({
   strength: number;
 }) {
   const config = PROCEDURAL_QUALITY_CONFIG[quality];
+  const eventSource = typeof document === 'undefined' ? undefined : document.body;
   const gl = useMemo(() => {
     if (rendererMode === 'webgl') {
       return {
@@ -197,31 +192,35 @@ export function ProceduralHeadCanvas({
         forceWebGL: false,
       } as ConstructorParameters<typeof THREE_WEBGPU.WebGPURenderer>[0]);
       await renderer.init();
+      (renderer as THREE_WEBGPU.WebGPURenderer & { domElement: HTMLCanvasElement }).domElement = canvas;
       return renderer;
     }) as any;
   }, [onWebGPUFailure, quality, rendererMode]);
 
   return (
-    <Canvas
-      frameloop="demand"
-      camera={{ position: [0, 0.02, 4.3], fov: 31 }}
-      dpr={config.dpr}
-      gl={gl}
-    >
-      {showStats && <Stats />}
-      <AdaptiveDpr />
-      <SceneGrade />
-      <StudioLights />
-      <CubemapEnvironment variant="studio" background={false} />
-      <ProceduralHeadRig
-        expressions={expressions}
-        identity={identity}
-        materialMode={materialMode}
-        onStats={onStats}
-        quality={quality}
-        strength={strength}
-      />
-      <OrbitControls makeDefault enablePan={false} minDistance={2.8} maxDistance={7.2} target={[0, -0.02, -0.45]} />
-    </Canvas>
+    <div className="h-full w-full">
+      <Canvas
+        frameloop="demand"
+        camera={{ position: [0, 0.02, 4.3], fov: 31 }}
+        dpr={config.dpr}
+        eventSource={eventSource}
+        gl={gl}
+      >
+        {showStats && <Stats />}
+        <AdaptiveDpr />
+        <SceneGrade />
+        <StudioLights />
+        <CubemapEnvironment variant="studio" background={false} />
+        <ProceduralHeadRig
+          expressions={expressions}
+          identity={identity}
+          materialMode={materialMode}
+          onStats={onStats}
+          quality={quality}
+          strength={strength}
+        />
+        <OrbitControls makeDefault enablePan={false} minDistance={2.8} maxDistance={7.2} target={[0, -0.02, -0.45]} />
+      </Canvas>
+    </div>
   );
 }

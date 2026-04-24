@@ -100,7 +100,8 @@ export default function ProceduralHeadRoute() {
 
   const expressions = useMemo(() => PROCEDURAL_EXPRESSION_PRESETS[preset].values, [preset]);
   const activePreset = PROCEDURAL_EXPRESSION_PRESETS[preset];
-  const rendererMode: ProceduralHeadRendererMode = rendererPreference === 'webgpu' && webgpuProbe?.ok ? 'webgpu' : 'webgl';
+  const rendererMode: ProceduralHeadRendererMode | null =
+    rendererPreference === 'webgpu' ? (webgpuProbe ? (webgpuProbe.ok ? 'webgpu' : 'webgl') : null) : 'webgl';
   const handleWebGPUFailure = useCallback((result: WebGPUSessionProbeResult) => {
     setWebgpuProbe(result);
     setRendererPreference('webgl');
@@ -118,21 +119,29 @@ export default function ProceduralHeadRoute() {
 
   return (
     <RouteShell>
-      <CanvasErrorBoundary key={rendererMode}>
-        <div className="absolute inset-0">
-          <ProceduralHeadCanvas
-            expressions={expressions}
-            identity={deferredIdentity}
-            materialMode={materialMode}
-            onStats={setStats}
-            onWebGPUFailure={handleWebGPUFailure}
-            quality={quality}
-            rendererMode={rendererMode}
-            showStats={showStats}
-            strength={strength}
-          />
+      {rendererMode ? (
+        <CanvasErrorBoundary key={rendererMode}>
+          <div className="absolute inset-0">
+            <ProceduralHeadCanvas
+              expressions={expressions}
+              identity={deferredIdentity}
+              materialMode={materialMode}
+              onStats={setStats}
+              onWebGPUFailure={handleWebGPUFailure}
+              quality={quality}
+              rendererMode={rendererMode}
+              showStats={showStats}
+              strength={strength}
+            />
+          </div>
+        </CanvasErrorBoundary>
+      ) : (
+        <div className="absolute inset-0 grid place-items-center">
+          <div className="rounded-[2rem] border border-sky-200/20 bg-black/60 px-6 py-5 text-sm text-sky-50 shadow-2xl backdrop-blur">
+            Checking WebGPU session before creating the renderer.
+          </div>
         </div>
-      </CanvasErrorBoundary>
+      )}
 
       <section className="absolute bottom-4 left-4 top-20 z-20 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3 overflow-hidden rounded-[2rem] border border-white/10 bg-black/52 p-4 text-sm shadow-2xl backdrop-blur-2xl">
         <div>
@@ -174,9 +183,9 @@ export default function ProceduralHeadRoute() {
         </div>
 
         <p className="rounded-2xl border border-white/8 bg-white/5 px-3 py-2 text-[11px] leading-5 text-stone-400">
-          Renderer: <span className="font-semibold uppercase text-stone-200">{rendererMode}</span>
+          Renderer: <span className="font-semibold uppercase text-stone-200">{rendererMode ?? 'checking'}</span>
           {rendererPreference === 'webgpu' && webgpuProbe?.ok === false ? ` fallback. ${webgpuProbe.message}` : ''}
-          {rendererPreference === 'webgpu' && !webgpuProbe ? ' preflight running; WebGL fallback is active until the adapter is verified.' : ''}
+          {rendererPreference === 'webgpu' && !webgpuProbe ? ' preflight running; renderer creation is paused until the adapter is verified.' : ''}
         </p>
 
         <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/5 p-1 text-xs">
