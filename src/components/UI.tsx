@@ -13,8 +13,13 @@ import {
   UserRound,
   Video,
 } from 'lucide-react';
-
-type FocusMode = 'portrait' | 'eyes' | 'mouth';
+import {
+  PRESENTATION_SHOT_ORDER,
+  PRESENTATION_SHOTS,
+  type AnimationMode,
+  type LightingMode,
+  type PresentationShotId,
+} from '../features/presentation/shots';
 
 interface UIProps {
   color1: string;
@@ -29,8 +34,8 @@ interface UIProps {
   setThickness: (v: number) => void;
   screenBrightness: number;
   setScreenBrightness: (v: number) => void;
-  lightingMode: 'studio' | 'outdoor';
-  setLightingMode: (v: 'studio' | 'outdoor') => void;
+  lightingMode: LightingMode;
+  setLightingMode: (v: LightingMode) => void;
   trackingEnabled: boolean;
   setTrackingEnabled: (v: boolean) => void;
   trackingStatus: 'idle' | 'loading' | 'tracking' | 'error';
@@ -38,12 +43,12 @@ interface UIProps {
   setDebugOverlayEnabled: (v: boolean) => void;
   videoEnvEnabled: boolean;
   setVideoEnvEnabled: (v: boolean) => void;
-  animationMode: 'mouse' | 'calm' | 'saccades' | 'scanning';
-  setAnimationMode: (v: 'mouse' | 'calm' | 'saccades' | 'scanning') => void;
+  animationMode: AnimationMode;
+  setAnimationMode: (v: AnimationMode) => void;
   pupilSize: number;
   setPupilSize: (v: number) => void;
-  focusMode: FocusMode;
-  setFocusMode: (v: FocusMode) => void;
+  activeShot: PresentationShotId;
+  setActiveShot: (v: PresentationShotId) => void;
   advancedRigOpen: boolean;
   setAdvancedRigOpen: (v: boolean) => void;
 }
@@ -57,11 +62,21 @@ const PRESETS = [
   { name: 'Amber', c1: '#5a2106', c2: '#f6b44d' },
 ];
 
-const FOCUS_OPTIONS: Array<{ value: FocusMode; label: string; icon: LucideIcon }> = [
-  { value: 'portrait', label: 'Face', icon: UserRound },
-  { value: 'eyes', label: 'Eyes', icon: Eye },
-  { value: 'mouth', label: 'Mouth', icon: Smile },
-];
+const SHOT_ICONS: Record<PresentationShotId, LucideIcon> = {
+  portrait: UserRound,
+  eyes: Eye,
+  mouth: Smile,
+  trackingTwin: Activity,
+  inspect: SlidersHorizontal,
+};
+
+const SHOT_OPTIONS = PRESENTATION_SHOT_ORDER.map((value) => ({
+  value,
+  label: PRESENTATION_SHOTS[value].shortLabel,
+  title: PRESENTATION_SHOTS[value].label,
+  description: PRESENTATION_SHOTS[value].description,
+  icon: SHOT_ICONS[value],
+}));
 
 const LIGHTING_OPTIONS: Array<{ value: UIProps['lightingMode']; label: string; icon: LucideIcon }> = [
   { value: 'studio', label: 'Studio', icon: Sparkles },
@@ -194,11 +209,13 @@ export default function UI({
   setAnimationMode,
   pupilSize,
   setPupilSize,
-  focusMode,
-  setFocusMode,
+  activeShot,
+  setActiveShot,
   advancedRigOpen,
   setAdvancedRigOpen,
 }: UIProps) {
+  const activeShotConfig = PRESENTATION_SHOTS[activeShot];
+
   return (
     <>
       <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_50%_16%,rgba(255,241,219,0.09),transparent_30%),linear-gradient(180deg,rgba(0,0,0,0.18),transparent_38%,rgba(0,0,0,0.42))]" />
@@ -214,7 +231,7 @@ export default function UI({
           <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-base font-semibold tracking-tight text-white">Digital face rig</h1>
-              <p className="mt-0.5 text-xs text-white/46">{trackingEnabled ? 'Live twin mode' : 'Presentation mode'}</p>
+              <p className="mt-0.5 text-xs text-white/46">{activeShotConfig.description}</p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] text-white/60">
               <StatusDot enabled={trackingEnabled} status={trackingStatus} />
@@ -222,16 +239,17 @@ export default function UI({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
-            {FOCUS_OPTIONS.map(({ value, label, icon: Icon }) => (
+          <div className="mt-3 grid grid-cols-5 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+            {SHOT_OPTIONS.map(({ value, label, title, description, icon: Icon }) => (
               <button
                 key={value}
                 type="button"
-                onClick={() => setFocusMode(value)}
-                aria-label={`${label} view`}
+                onClick={() => setActiveShot(value)}
+                aria-label={`${title} shot`}
+                title={description}
                 className={cx(
-                  'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition',
-                  focusMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                  'flex items-center justify-center gap-1 rounded-full px-1.5 py-2 text-[10px] font-semibold transition',
+                  activeShot === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -344,9 +362,7 @@ export default function UI({
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <h1 className="text-lg font-semibold tracking-tight text-white">Digital face rig</h1>
-                  <p className="mt-0.5 text-xs text-white/46">
-                    {trackingEnabled ? 'Live twin mode' : 'Presentation mode'}
-                  </p>
+                  <p className="mt-0.5 text-xs text-white/46">{activeShotConfig.description}</p>
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] text-white/60">
                   <StatusDot enabled={trackingEnabled} status={trackingStatus} />
@@ -438,16 +454,18 @@ export default function UI({
             </div>
 
             <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.035] p-3">
-              <SectionLabel icon={Eye}>View</SectionLabel>
-              <div className="grid grid-cols-3 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
-                {FOCUS_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <SectionLabel icon={Eye}>Shot</SectionLabel>
+              <div className="grid grid-cols-5 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+                {SHOT_OPTIONS.map(({ value, label, title, description, icon: Icon }) => (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setFocusMode(value)}
+                    onClick={() => setActiveShot(value)}
+                    aria-label={`${title} shot`}
+                    title={description}
                     className={cx(
-                      'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition',
-                      focusMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                      'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-[11px] font-semibold transition',
+                      activeShot === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />

@@ -12,62 +12,14 @@ import TrackingDebugOverlay from '../components/TrackingDebugOverlay';
 import UI from '../components/UI';
 import VideoFeedEnvironment from '../components/VideoFeedEnvironment';
 import type { FaceViewMode } from '../features/face/materials';
+import {
+  getPresentationShotPreset,
+  PRESENTATION_SHOTS,
+  type AnimationMode,
+  type LightingMode,
+  type PresentationShotId,
+} from '../features/presentation/shots';
 import { type FaceTwinTracking, useMediaPipeFaceTwin } from '../hooks/useMediaPipeFaceTwin';
-
-type FocusMode = 'portrait' | 'eyes' | 'mouth';
-
-type PresentationPreset = {
-  camera: THREE.Vector3;
-  target: THREE.Vector3;
-  facePosition: [number, number, number];
-  faceScale: number;
-};
-
-const DESKTOP_PRESENTATION_PRESETS: Record<FocusMode, PresentationPreset> = {
-  portrait: {
-    camera: new THREE.Vector3(0, 0.04, 8.7),
-    target: new THREE.Vector3(0, -0.03, 0),
-    facePosition: [0, -0.35, 0],
-    faceScale: 1.62,
-  },
-  eyes: {
-    camera: new THREE.Vector3(0, 0.12, 6.95),
-    target: new THREE.Vector3(0, 0.36, 0),
-    facePosition: [0, -0.98, 0],
-    faceScale: 2.42,
-  },
-  mouth: {
-    camera: new THREE.Vector3(0, -0.18, 6.85),
-    target: new THREE.Vector3(0, -0.78, 0),
-    facePosition: [0, 0.25, 0],
-    faceScale: 2.26,
-  },
-};
-
-const COMPACT_PRESENTATION_PRESETS: Record<FocusMode, PresentationPreset> = {
-  portrait: {
-    camera: new THREE.Vector3(0, 0.04, 9.35),
-    target: new THREE.Vector3(0, -0.02, 0),
-    facePosition: [0, -0.24, 0],
-    faceScale: 1.22,
-  },
-  eyes: {
-    camera: new THREE.Vector3(0, 0.1, 7.7),
-    target: new THREE.Vector3(0, 0.32, 0),
-    facePosition: [0, -0.72, 0],
-    faceScale: 1.72,
-  },
-  mouth: {
-    camera: new THREE.Vector3(0, -0.12, 7.45),
-    target: new THREE.Vector3(0, -0.62, 0),
-    facePosition: [0, 0.08, 0],
-    faceScale: 1.66,
-  },
-};
-
-function getPresentationPreset(focusMode: FocusMode, compactViewport: boolean) {
-  return compactViewport ? COMPACT_PRESENTATION_PRESETS[focusMode] : DESKTOP_PRESENTATION_PRESETS[focusMode];
-}
 
 function SceneGrade({ screenBrightness, exposure, environmentIntensity }: { screenBrightness: number; exposure: number; environmentIntensity: number }) {
   const { gl, scene } = useThree();
@@ -103,23 +55,24 @@ function useCompactViewport() {
 
 function PresentationCameraRig({
   faceTracking,
-  focusMode,
+  activeShot,
   compactViewport,
 }: {
   faceTracking: FaceTwinTracking | null;
-  focusMode: FocusMode;
+  activeShot: PresentationShotId;
   compactViewport: boolean;
 }) {
   const { camera } = useThree();
   const stableProximityRef = useRef(0.5);
 
   useEffect(() => {
-    camera.position.copy(DESKTOP_PRESENTATION_PRESETS.portrait.camera);
-    camera.lookAt(DESKTOP_PRESENTATION_PRESETS.portrait.target);
+    const initialPreset = PRESENTATION_SHOTS.portrait.desktop;
+    camera.position.set(...initialPreset.camera);
+    camera.lookAt(...initialPreset.target);
   }, [camera]);
 
   useFrame((_, delta) => {
-    const preset = getPresentationPreset(focusMode, compactViewport);
+    const preset = getPresentationShotPreset(activeShot, compactViewport);
     const isTracking = faceTracking?.status === 'tracking';
     const proximity = isTracking ? faceTracking.proximity : 0.5;
     const proximityDelta = proximity - stableProximityRef.current;
@@ -129,13 +82,13 @@ function PresentationCameraRig({
     }
 
     const normalized = THREE.MathUtils.clamp((stableProximityRef.current - 0.5) / 0.38, -1, 1);
-    const trackingZ = THREE.MathUtils.clamp(preset.camera.z - normalized * 0.82, preset.camera.z - 0.75, preset.camera.z + 0.42);
+    const trackingZ = THREE.MathUtils.clamp(preset.camera[2] - normalized * 0.82, preset.camera[2] - 0.75, preset.camera[2] + 0.42);
 
     const damping = 1 - Math.exp(-delta * 3.2);
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, preset.camera.x, damping);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, preset.camera.y, damping);
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, preset.camera[0], damping);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, preset.camera[1], damping);
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, trackingZ, damping);
-    camera.lookAt(preset.target);
+    camera.lookAt(...preset.target);
   });
 
   return null;
@@ -148,14 +101,14 @@ export default function MainRoute() {
   const [ior, setIor] = useState(1.376);
   const [thickness, setThickness] = useState(0.1);
   const [screenBrightness, setScreenBrightness] = useState(1.0);
-  const [lightingMode, setLightingMode] = useState<'studio' | 'outdoor'>('studio');
-  const [animationMode, setAnimationMode] = useState<'mouse' | 'calm' | 'saccades' | 'scanning'>('mouse');
+  const [lightingMode, setLightingMode] = useState<LightingMode>('studio');
+  const [animationMode, setAnimationMode] = useState<AnimationMode>('mouse');
   const [pupilSize, setPupilSize] = useState(0.15);
   const [trackingEnabled, setTrackingEnabled] = useState(false);
   const [videoEnvEnabled, setVideoEnvEnabled] = useState(false);
   const [debugOverlayEnabled, setDebugOverlayEnabled] = useState(false);
   const [advancedRigOpen, setAdvancedRigOpen] = useState(false);
-  const [focusMode, setFocusMode] = useState<FocusMode>('portrait');
+  const [activeShot, setActiveShot] = useState<PresentationShotId>('portrait');
   const [effectsEnabled] = useState(false);
   const compactViewport = useCompactViewport();
 
@@ -180,7 +133,19 @@ export default function MainRoute() {
     cubemapIntensity: number;
   };
 
-  const presentation = getPresentationPreset(focusMode, compactViewport);
+  const presentation = getPresentationShotPreset(activeShot, compactViewport);
+
+  const applyPresentationShot = (shotId: PresentationShotId) => {
+    const { defaults } = PRESENTATION_SHOTS[shotId];
+
+    setActiveShot(shotId);
+    setLightingMode(defaults.lightingMode);
+    setAnimationMode(defaults.animationMode);
+    setTrackingEnabled(defaults.trackingEnabled);
+    setVideoEnvEnabled(defaults.videoEnvEnabled);
+    setDebugOverlayEnabled(defaults.debugOverlayEnabled);
+    setAdvancedRigOpen(defaults.advancedRigOpen);
+  };
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-neutral-950 text-white">
@@ -196,7 +161,7 @@ export default function MainRoute() {
           {showStats && <Stats />}
           <AdaptiveDpr />
           <SceneGrade screenBrightness={screenBrightness} exposure={renderExposure} environmentIntensity={cubemapIntensity} />
-          <PresentationCameraRig faceTracking={trackingEnabled ? faceTracking : null} focusMode={focusMode} compactViewport={compactViewport} />
+          <PresentationCameraRig faceTracking={trackingEnabled ? faceTracking : null} activeShot={activeShot} compactViewport={compactViewport} />
 
           {lightingMode === 'studio' ? (
             <>
@@ -263,8 +228,8 @@ export default function MainRoute() {
         setAnimationMode={setAnimationMode}
         pupilSize={pupilSize}
         setPupilSize={setPupilSize}
-        focusMode={focusMode}
-        setFocusMode={setFocusMode}
+        activeShot={activeShot}
+        setActiveShot={applyPresentationShot}
         advancedRigOpen={advancedRigOpen}
         setAdvancedRigOpen={setAdvancedRigOpen}
       />
