@@ -1,7 +1,7 @@
 import { AdaptiveDpr, OrbitControls, Stats, useGLTF } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useControls } from 'leva';
-import { Suspense, useEffect, useMemo } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { KTX2Loader } from 'three-stdlib';
@@ -9,6 +9,7 @@ import * as THREE_WEBGPU from 'three/webgpu';
 import AppNav from '../components/AppNav';
 import CanvasErrorBoundary from '../components/CanvasErrorBoundary';
 import CubemapEnvironment from '../components/CubemapEnvironment';
+import { probeWebGPUSession, type WebGPUSessionProbeResult } from '../utils/webgpuSession';
 
 const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
 
@@ -94,18 +95,49 @@ function WebGLViewport({ exposure, showStats }: { exposure: number; showStats: b
   );
 }
 
-function WebGPUViewport({ exposure, showStats }: { exposure: number; showStats: boolean }) {
+function WebGPUStatusPanel({ result }: { result: WebGPUSessionProbeResult | null }) {
+  const message = result?.message ?? 'Checking the WebGPU adapter and canvas context before starting the comparison viewport.';
+
+  return (
+    <div className="flex h-full items-center justify-center p-6">
+      <div className="max-w-md rounded-3xl border border-amber-300/20 bg-amber-100/10 p-6 text-amber-50 backdrop-blur">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-300">
+          {result ? 'WebGPU unavailable' : 'WebGPU preflight'}
+        </p>
+        <h2 className="mt-3 text-xl font-semibold">
+          {result ? 'The WebGPU side cannot start in this browser session.' : 'Checking WebGPU session health.'}
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-amber-50/85">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function WebGPUViewport({
+  exposure,
+  showStats,
+  onProbeFailure,
+}: {
+  exposure: number;
+  showStats: boolean;
+  onProbeFailure: (result: WebGPUSessionProbeResult) => void;
+}) {
   return (
     <Canvas
       camera={{ position: [0, 0.05, 7.4], fov: 40 }}
       dpr={[1, 1.5]}
       shadows
       gl={async (props) => {
+        const result = await probeWebGPUSession({ canvas: props.canvas as HTMLCanvasElement });
+        if (!result.ok) {
+          onProbeFailure(result);
+          throw new Error(result.message);
+        }
+
         const renderer = new THREE_WEBGPU.WebGPURenderer({
           canvas: props.canvas as HTMLCanvasElement,
           antialias: false,
           alpha: false,
-          powerPreference: 'high-performance',
         } as ConstructorParameters<typeof THREE_WEBGPU.WebGPURenderer>[0]);
         await renderer.init();
         return renderer;
@@ -124,11 +156,21 @@ function WebGPUViewport({ exposure, showStats }: { exposure: number; showStats: 
 }
 
 export default function MaterialParityRoute() {
-  const supportsWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
   const { exposure, showStats } = useControls('Parity Lab', {
     exposure: { value: 1.2, min: 0.5, max: 3, step: 0.01 },
     showStats: false,
   });
+  const [webgpuProbe, setWebgpuProbe] = useState<WebGPUSessionProbeResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    probeWebGPUSession().then((result) => {
+      if (!cancelled) setWebgpuProbe(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-stone-950 text-stone-100">
@@ -157,17 +199,12 @@ export default function MaterialParityRoute() {
         </CanvasErrorBoundary>
 
         <CanvasErrorBoundary>
-          {supportsWebGPU ? (
-            <WebGPUViewport exposure={exposure} showStats={showStats} />
+          {!webgpuProbe ? (
+            <WebGPUStatusPanel result={null} />
+          ) : webgpuProbe.ok ? (
+            <WebGPUViewport exposure={exposure} showStats={showStats} onProbeFailure={setWebgpuProbe} />
           ) : (
-            <div className="flex h-full items-center justify-center p-6">
-              <div className="max-w-md rounded-3xl border border-amber-300/20 bg-amber-100/10 p-6 text-amber-50 backdrop-blur">
-                <h2 className="text-xl font-semibold">WebGPU is not available in this browser.</h2>
-                <p className="mt-3 text-sm leading-6 text-amber-50/85">
-                  Open this route in a Chromium-based browser with WebGPU enabled to compare the untouched source materials directly.
-                </p>
-              </div>
-            </div>
+            <WebGPUStatusPanel result={webgpuProbe} />
           )}
         </CanvasErrorBoundary>
       </div>
