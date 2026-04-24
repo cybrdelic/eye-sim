@@ -125,9 +125,11 @@ export function ProceduralEyeMaterials({ mode }: { mode: ProceduralHeadMaterialM
         opacity={mode === 'topology' ? 0.12 : 0.22}
         roughness={0.02}
         metalness={0}
-        transmission={0.35}
-        thickness={0.08}
         envMapIntensity={1.4}
+        depthWrite={false}
+        clearcoat={1}
+        clearcoatRoughness={0.04}
+        specularIntensity={1}
         wireframe={mode === 'topology'}
       />
     ),

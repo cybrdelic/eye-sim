@@ -1,8 +1,10 @@
-import { OrbitControls, Stats } from '@react-three/drei';
+import { AdaptiveDpr, OrbitControls, Stats } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import * as THREE_WEBGPU from 'three/webgpu';
 import CubemapEnvironment from '../../components/CubemapEnvironment';
+import { probeWebGPUSession, type WebGPUSessionProbeResult } from '../../utils/webgpuSession';
 import type {
   ProceduralExpressionValues,
   ProceduralHeadIdentity,
@@ -15,6 +17,8 @@ import { createProceduralHeadGeometry } from './geometry';
 import { createProceduralSkinTexturePack } from './maps';
 import { ProceduralBeautyMaterial, ProceduralEyeMaterials } from './materials';
 import { ProceduralMouthSystem } from './mouthSystem';
+
+export type ProceduralHeadRendererMode = 'webgpu' | 'webgl';
 
 function setMorphInfluences(mesh: THREE.Mesh | null, expressions: ProceduralExpressionValues, strength: number) {
   if (!mesh?.morphTargetDictionary || !mesh.morphTargetInfluences) return;
@@ -152,6 +156,8 @@ export function ProceduralHeadCanvas({
   materialMode,
   onStats,
   quality,
+  rendererMode,
+  onWebGPUFailure,
   showStats,
   strength,
 }: {
@@ -159,20 +165,51 @@ export function ProceduralHeadCanvas({
   identity: ProceduralHeadIdentity;
   materialMode: ProceduralHeadMaterialMode;
   onStats?: (stats: ProceduralHeadStats) => void;
+  onWebGPUFailure?: (result: WebGPUSessionProbeResult) => void;
   quality: ProceduralHeadQuality;
+  rendererMode: ProceduralHeadRendererMode;
   showStats: boolean;
   strength: number;
 }) {
   const config = PROCEDURAL_QUALITY_CONFIG[quality];
+  const gl = useMemo(() => {
+    if (rendererMode === 'webgl') {
+      return {
+        antialias: quality !== 'fast',
+        powerPreference: 'high-performance' as const,
+        alpha: false,
+        stencil: false,
+      };
+    }
+
+    return (async (defaults: Record<string, unknown>) => {
+      const canvas = defaults.canvas as HTMLCanvasElement;
+      const result = await probeWebGPUSession({ canvas });
+      if (!result.ok) {
+        onWebGPUFailure?.(result);
+        throw new Error(result.message);
+      }
+
+      const renderer = new THREE_WEBGPU.WebGPURenderer({
+        canvas,
+        antialias: quality !== 'fast',
+        alpha: false,
+        forceWebGL: false,
+      } as ConstructorParameters<typeof THREE_WEBGPU.WebGPURenderer>[0]);
+      await renderer.init();
+      return renderer;
+    }) as any;
+  }, [onWebGPUFailure, quality, rendererMode]);
 
   return (
     <Canvas
       frameloop="demand"
       camera={{ position: [0, 0.02, 4.3], fov: 31 }}
       dpr={config.dpr}
-      gl={{ antialias: quality !== 'fast', powerPreference: 'high-performance' }}
+      gl={gl}
     >
       {showStats && <Stats />}
+      <AdaptiveDpr />
       <SceneGrade />
       <StudioLights />
       <CubemapEnvironment variant="studio" background={false} />

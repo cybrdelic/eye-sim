@@ -1,7 +1,7 @@
-import React, { startTransition, useDeferredValue, useMemo, useState } from 'react';
+import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import AppNav from '../components/AppNav';
 import CanvasErrorBoundary from '../components/CanvasErrorBoundary';
-import { ProceduralHeadCanvas } from '../features/procedural-head/scene';
+import { ProceduralHeadCanvas, type ProceduralHeadRendererMode } from '../features/procedural-head/scene';
 import type {
   ProceduralExpressionPreset,
   ProceduralHeadIdentity,
@@ -14,6 +14,7 @@ import {
   PROCEDURAL_EXPRESSION_PRESETS,
   PROCEDURAL_QUALITY_CONFIG,
 } from '../features/procedural-head/types';
+import { probeWebGPUSession, type WebGPUSessionProbeResult } from '../utils/webgpuSession';
 
 const IDENTITY_CONTROLS: Array<{
   key: keyof Omit<ProceduralHeadIdentity, 'seed'>;
@@ -90,6 +91,8 @@ export default function ProceduralHeadRoute() {
   const [quality, setQuality] = useState<ProceduralHeadQuality>('balanced');
   const [materialMode, setMaterialMode] = useState<ProceduralHeadMaterialMode>('beauty');
   const [preset, setPreset] = useState<ProceduralExpressionPreset>('neutral');
+  const [rendererPreference, setRendererPreference] = useState<ProceduralHeadRendererMode>('webgpu');
+  const [webgpuProbe, setWebgpuProbe] = useState<WebGPUSessionProbeResult | null>(null);
   const [strength, setStrength] = useState(1);
   const [showStats, setShowStats] = useState(false);
   const [stats, setStats] = useState<ProceduralHeadStats | null>(null);
@@ -97,17 +100,34 @@ export default function ProceduralHeadRoute() {
 
   const expressions = useMemo(() => PROCEDURAL_EXPRESSION_PRESETS[preset].values, [preset]);
   const activePreset = PROCEDURAL_EXPRESSION_PRESETS[preset];
+  const rendererMode: ProceduralHeadRendererMode = rendererPreference === 'webgpu' && webgpuProbe?.ok ? 'webgpu' : 'webgl';
+  const handleWebGPUFailure = useCallback((result: WebGPUSessionProbeResult) => {
+    setWebgpuProbe(result);
+    setRendererPreference('webgl');
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    probeWebGPUSession().then((result) => {
+      if (!cancelled) setWebgpuProbe(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <RouteShell>
-      <CanvasErrorBoundary>
+      <CanvasErrorBoundary key={rendererMode}>
         <div className="absolute inset-0">
           <ProceduralHeadCanvas
             expressions={expressions}
             identity={deferredIdentity}
             materialMode={materialMode}
             onStats={setStats}
+            onWebGPUFailure={handleWebGPUFailure}
             quality={quality}
+            rendererMode={rendererMode}
             showStats={showStats}
             strength={strength}
           />
@@ -134,6 +154,30 @@ export default function ProceduralHeadRoute() {
             </button>
           ))}
         </div>
+
+        <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white/5 p-1 text-xs">
+          {(['webgpu', 'webgl'] as ProceduralHeadRendererMode[]).map((mode) => {
+            const disabled = mode === 'webgpu' && webgpuProbe?.ok === false;
+            return (
+              <button
+                key={mode}
+                disabled={disabled}
+                onClick={() => setRendererPreference(mode)}
+                className={`rounded-xl px-2 py-1.5 uppercase transition ${
+                  rendererMode === mode ? 'bg-sky-200 text-stone-950' : disabled ? 'cursor-not-allowed text-stone-600' : 'text-stone-300 hover:bg-white/10'
+                }`}
+              >
+                {mode}
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="rounded-2xl border border-white/8 bg-white/5 px-3 py-2 text-[11px] leading-5 text-stone-400">
+          Renderer: <span className="font-semibold uppercase text-stone-200">{rendererMode}</span>
+          {rendererPreference === 'webgpu' && webgpuProbe?.ok === false ? ` fallback. ${webgpuProbe.message}` : ''}
+          {rendererPreference === 'webgpu' && !webgpuProbe ? ' preflight running; WebGL fallback is active until the adapter is verified.' : ''}
+        </p>
 
         <div className="grid grid-cols-3 gap-1 rounded-2xl bg-white/5 p-1 text-xs">
           {(Object.keys(PROCEDURAL_QUALITY_CONFIG) as ProceduralHeadQuality[]).map((nextQuality) => (
