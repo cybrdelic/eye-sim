@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Matrix4, Texture, Vector3 } from 'three';
 import type { Mesh, Object3D } from 'three';
@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
-const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
+const FACECAP_MODEL_FILE = path.resolve(process.cwd(), 'public/models/facecap.glb');
 const OUTPUT_DIR = path.resolve(process.cwd(), 'data/conditioning');
 const MANIFEST_FILE = path.join(OUTPUT_DIR, 'facecap.conditioning.json');
 const PAYLOAD_FILE = path.join(OUTPUT_DIR, 'facecapConditioning.json');
@@ -386,16 +386,12 @@ function findMesh(root: Object3D, predicate: (mesh: Mesh) => boolean) {
 async function loadFacecapScene() {
   Reflect.set(globalThis, 'self', globalThis);
 
-  const response = await fetch(FACECAP_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch facecap asset: ${response.status} ${response.statusText}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
+  const glb = await readFile(FACECAP_MODEL_FILE);
+  const arrayBuffer = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   loader.setKTX2Loader(textureStubLoader as unknown as KTX2Loader);
-  const gltf = await loader.parseAsync(arrayBuffer, FACECAP_URL);
+  const gltf = await loader.parseAsync(arrayBuffer, FACECAP_MODEL_FILE);
 
   const headMesh = findMesh(gltf.scene, (mesh) => mesh.name === 'mesh_2' || mesh.parent?.name === 'head');
   const leftEyeMesh = findMesh(gltf.scene, (mesh) => mesh.parent?.name === 'eyeLeft');
@@ -985,7 +981,7 @@ async function main() {
   });
   const manifest = {
     generatedAt: new Date().toISOString(),
-    sourceAsset: FACECAP_URL,
+    sourceAsset: path.relative(process.cwd(), FACECAP_MODEL_FILE),
     payloadFile: path.relative(process.cwd(), PAYLOAD_FILE),
     headMeshName: headMesh.name,
     positionCount: position.count,

@@ -37,6 +37,7 @@ Prerequisite: Node.js 22+ and `pnpm`.
 - `src/features/presentation/` contains shot definitions for camera framing, scale, defaults, and release-safe interaction boundaries.
 - `src/features/tracking/` contains the tracking adapter contract plus MediaPipe pipeline modules.
 - `src/features/face/` contains face runtime, eye-fit, and material modules.
+- `public/models/` and `public/vendor/` store deterministic runtime assets for Facecap, MediaPipe, and Basis transcoding.
 - `data/conditioning/` stores generated conditioning payloads and manifests.
 - `scripts/conditioning/probes/` contains one-off inspection probes for the conditioning bake.
 

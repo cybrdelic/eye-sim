@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-04-23T19:50:23.889Z",
-  "sourceAsset": "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb",
+  "sourceAsset": "public\\models\\facecap.glb",
   "payloadFile": "data\\conditioning\\facecapConditioning.json",
   "headMeshName": "mesh_2",
   "positionCount": 2694,

@@ -9,9 +9,8 @@ import * as THREE_WEBGPU from 'three/webgpu';
 import AppNav from '../components/AppNav';
 import CanvasErrorBoundary from '../components/CanvasErrorBoundary';
 import CubemapEnvironment from '../components/CubemapEnvironment';
+import { BASIS_TRANSCODER_PATH, FACECAP_MODEL_URL } from '../config/assets';
 import { probeWebGPUSession, type WebGPUSessionProbeResult } from '../utils/webgpuSession';
-
-const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
 
 function SceneGrade({ exposure }: { exposure: number }) {
   const { gl, scene } = useThree();
@@ -29,9 +28,9 @@ function SceneGrade({ exposure }: { exposure: number }) {
 
 function SourceBust({ position }: { position: [number, number, number] }) {
   const gl = useThree((state) => state.gl);
-  const { scene: sourceScene } = useGLTF(FACECAP_URL, true, true, (loader) => {
+  const { scene: sourceScene } = useGLTF(FACECAP_MODEL_URL, true, true, (loader) => {
     const ktx2Loader = new KTX2Loader();
-    ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+    ktx2Loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
     ktx2Loader.detectSupport(gl);
     loader.setKTX2Loader(ktx2Loader);
   });
