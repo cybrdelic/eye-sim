@@ -19,7 +19,9 @@ import {
   type LightingMode,
   type PresentationShotId,
 } from '../features/presentation/shots';
-import { type FaceTwinTracking, useMediaPipeFaceTwin } from '../hooks/useMediaPipeFaceTwin';
+import type { FaceTrackingAdapterId } from '../features/tracking/adapters';
+import type { FaceTwinTracking } from '../features/tracking/types';
+import { useFaceTrackingAdapter } from '../hooks/useFaceTrackingAdapter';
 
 function SceneGrade({ screenBrightness, exposure, environmentIntensity }: { screenBrightness: number; exposure: number; environmentIntensity: number }) {
   const { gl, scene } = useThree();
@@ -111,10 +113,12 @@ export default function MainRoute() {
   const [activeShot, setActiveShot] = useState<PresentationShotId>('portrait');
   const [effectsEnabled] = useState(false);
   const compactViewport = useCompactViewport();
+  const trackingAdapterId: FaceTrackingAdapterId = trackingEnabled ? 'webcam' : 'mouse';
 
-  const faceTracking = useMediaPipeFaceTwin({
-    captureEnabled: trackingEnabled || videoEnvEnabled,
-    trackingEnabled,
+  const faceTracking = useFaceTrackingAdapter({
+    adapterId: trackingAdapterId,
+    webcamCaptureEnabled: trackingEnabled || videoEnvEnabled,
+    webcamTrackingEnabled: trackingEnabled,
   });
 
   const { faceScale, viewMode, showCustomEyes, showStats, renderExposure, cubemapIntensity } = useControls({
