@@ -1,6 +1,6 @@
 # Eye Sim
 
-Eye Sim is a React + Three.js digital face rig presentation system with procedural eyes as the hero feature. The default route is the product surface: a polished face rig with opt-in tracking, focus modes, and release-safe controls.
+Eye Sim is a React + Three.js digital face rig presentation system with procedural eyes as the hero feature. The default route is the product surface: a polished face rig with opt-in tracking, shot-based presentation modes, and release-safe controls.
 
 The repo also contains isolated lab routes under `/labs/*` for material parity, beauty shading, WebGPU diagnostics, and offline Facecap conditioning. Labs are intentionally separated from the default experience and may be unstable or renderer-specific.
 
@@ -34,6 +34,7 @@ Prerequisite: Node.js 22+ and `pnpm`.
 - `src/routes/` contains the main app route and lab routes.
 - `src/routes/MainRoute.tsx` is the product surface.
 - `src/routes/*LabRoute.tsx` and other `/labs/*` routes are investigation surfaces, not product defaults.
+- `src/features/presentation/` contains shot definitions for camera framing, scale, defaults, and release-safe interaction boundaries.
 - `src/features/tracking/` contains the MediaPipe tracking pipeline.
 - `src/features/face/` contains face runtime, eye-fit, and material modules.
 - `data/conditioning/` stores generated conditioning payloads and manifests.
