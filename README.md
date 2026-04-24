@@ -4,6 +4,18 @@ Eye Sim is a React + Three.js digital face rig presentation system with procedur
 
 The repo also contains isolated lab routes under `/labs/*` for material parity, beauty shading, WebGPU diagnostics, and offline Facecap conditioning. Labs are intentionally separated from the default experience and may be unstable or renderer-specific.
 
+## Latest Proof
+
+The strongest current slice is the procedural-head route on `codex/procedural-head-generator`. It adds a generator-backed face runtime, mouth shaping, and a dedicated product-facing route without collapsing the existing product/lab boundary.
+
+- Proof page: [`docs/proof/procedural-head.md`](./docs/proof/procedural-head.md)
+- Captured artifacts:
+  - [`docs/proof/procedural-head/desktop-face-rig.png`](./docs/proof/procedural-head/desktop-face-rig.png)
+  - [`docs/proof/procedural-head/mouth-closeup.png`](./docs/proof/procedural-head/mouth-closeup.png)
+  - [`docs/proof/procedural-head/mobile-face-rig.png`](./docs/proof/procedural-head/mobile-face-rig.png)
+
+![Procedural head desktop proof](./docs/proof/procedural-head/desktop-face-rig.png)
+
 ## Stack
 
 - React 19 + Vite
