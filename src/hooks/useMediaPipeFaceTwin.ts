@@ -1,5 +1,6 @@
 import type { FaceLandmarker } from '@mediapipe/tasks-vision';
 import { useEffect, useRef, useState } from 'react';
+import { MEDIAPIPE_FACE_LANDMARKER_MODEL_URL, MEDIAPIPE_VISION_WASM_PATH } from '../config/assets';
 import {
   createCvRefinementScratch,
   estimateEyePose,
@@ -194,12 +195,12 @@ export function useMediaPipeFaceTwin(options: boolean | UseMediaPipeFaceTwinOpti
         }
 
         const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
-        const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm');
+        const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_VISION_WASM_PATH);
         if (cancelled) return;
 
         faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            modelAssetPath: MEDIAPIPE_FACE_LANDMARKER_MODEL_URL,
           },
           runningMode: 'VIDEO',
           numFaces: 1,

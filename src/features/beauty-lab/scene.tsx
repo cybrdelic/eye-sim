@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { BASIS_TRANSCODER_PATH, FACECAP_MODEL_URL } from '../../config/assets';
 import {
   applyExpressionMorphsToMesh,
   createStabilizedSkinGeometry,
@@ -19,8 +20,6 @@ import type {
   FacecapConditioningData,
 } from './types';
 import type { SkinUniforms } from './uniforms';
-
-const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
 
 export function SceneGrade({ exposure }: { exposure: number }) {
   const { gl, scene } = useThree();
@@ -57,9 +56,9 @@ export function BeautyBust({
   const gl = useThree((state) => state.gl);
   const conditioningMeshRoles = useMemo(() => resolveConditioningMeshRoles(conditioningData), [conditioningData]);
 
-  const { scene: sourceScene } = useGLTF(FACECAP_URL, true, true, (loader) => {
+  const { scene: sourceScene } = useGLTF(FACECAP_MODEL_URL, true, true, (loader) => {
     const ktx2Loader = new KTX2Loader();
-    ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+    ktx2Loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
     ktx2Loader.detectSupport(gl);
     loader.setKTX2Loader(ktx2Loader as any);
   });

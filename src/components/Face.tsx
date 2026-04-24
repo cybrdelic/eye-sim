@@ -5,6 +5,7 @@ import type { ComponentProps } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { KTX2Loader } from 'three-stdlib';
+import { BASIS_TRANSCODER_PATH, FACECAP_MODEL_URL } from '../config/assets';
 import type { FaceTwinTracking } from '../hooks/useMediaPipeFaceTwin';
 import {
   BEAUTY_SHADER_VERSION,
@@ -37,7 +38,6 @@ import type { MouthSafetyProfile } from '../features/face/mouthSafety';
 import { createFaceRigRuntimeState, updateFaceRigRuntime, type FaceRigMorphBinding } from '../features/face/runtime';
 import Eye from './Eye';
 
-const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
 const DEV_LOGGING = import.meta.env.DEV;
 type FaceEyeProps = Omit<ComponentProps<typeof Eye>, 'trackedGaze' | 'saccadeTarget' | 'rotationLimits' | 'isRightEye' | 'blink'>;
 
@@ -60,9 +60,9 @@ export default function Face({
   const gl = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
 
-  const { scene } = useGLTF(FACECAP_URL, true, true, (loader) => {
+  const { scene } = useGLTF(FACECAP_MODEL_URL, true, true, (loader) => {
     const ktx2Loader = new KTX2Loader();
-    ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+    ktx2Loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
     ktx2Loader.detectSupport(gl);
     loader.setKTX2Loader(ktx2Loader);
   });

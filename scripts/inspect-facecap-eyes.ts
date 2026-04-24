@@ -15,7 +15,10 @@
     image pipeline, which is unnecessary for geometry-only inspection and can fail in Node.
 */
 
-const FACE_CAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const FACECAP_MODEL_FILE = path.resolve(process.cwd(), 'public/models/facecap.glb');
 
 type MeshCandidate = {
   name: string;
@@ -384,9 +387,8 @@ function findBestEyeRoot(params: {
 }
 
 async function main() {
-  const res = await fetch(FACE_CAP_URL);
-  if (!res.ok) throw new Error(`Failed to fetch GLB: ${res.status} ${res.statusText}`);
-  const arrayBuffer = await res.arrayBuffer();
+  const glb = await readFile(FACECAP_MODEL_FILE);
+  const arrayBuffer = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
 
   const { json } = parseGLB(arrayBuffer);
   const nodes = json.nodes ?? [];
