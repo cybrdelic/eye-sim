@@ -1,3 +1,5 @@
+import { DEFAULT_MOUTH_SAFETY_PROFILE, type MouthSafetyProfile } from '../face/mouthSafety';
+
 export type PresentationShotId = 'portrait' | 'eyes' | 'mouth' | 'trackingTwin' | 'inspect';
 
 export type LightingMode = 'studio' | 'outdoor';
@@ -31,17 +33,11 @@ export type PresentationShot = {
     advancedRigOpen: boolean;
   };
   allowedPanels: ShotControlPanel[];
-  mouthSafety: {
-    jawOpenMax: number;
-    smileMax: number;
-    description: string;
-  };
+  mouthSafety: MouthSafetyProfile;
 };
 
 const DEFAULT_MOUTH_SAFETY: PresentationShot['mouthSafety'] = {
-  jawOpenMax: 0.36,
-  smileMax: 0.44,
-  description: 'Keep the current Facecap mouth interior out of extreme expression ranges.',
+  ...DEFAULT_MOUTH_SAFETY_PROFILE,
 };
 
 export const PRESENTATION_SHOTS: Record<PresentationShotId, PresentationShot> = {
@@ -100,8 +96,16 @@ export const PRESENTATION_SHOTS: Record<PresentationShotId, PresentationShot> = 
     },
     allowedPanels: ['iris', 'lighting', 'animation', 'optics', 'rig'],
     mouthSafety: {
-      jawOpenMax: 0.18,
-      smileMax: 0.28,
+      jawOpenMax: 0.14,
+      smileMax: 0.24,
+      stretchMax: 0.18,
+      lipRaiseMax: 0.06,
+      lipDropMax: 0.07,
+      puckerMax: 0.18,
+      funnelMax: 0.16,
+      tongueOutMax: 0,
+      dentalExposureMax: 0.12,
+      closedMouthBias: 0.12,
       description: 'Favor eye motion and avoid mouth expressions while the crop hides the lower face.',
     },
   },
@@ -134,6 +138,14 @@ export const PRESENTATION_SHOTS: Record<PresentationShotId, PresentationShot> = 
     mouthSafety: {
       jawOpenMax: 0.22,
       smileMax: 0.24,
+      stretchMax: 0.2,
+      lipRaiseMax: 0.08,
+      lipDropMax: 0.1,
+      puckerMax: 0.2,
+      funnelMax: 0.18,
+      tongueOutMax: 0,
+      dentalExposureMax: 0.18,
+      closedMouthBias: 0.14,
       description: 'Hold the lower face in a calm performance range until the asset mouth is replaced.',
     },
   },
@@ -166,6 +178,14 @@ export const PRESENTATION_SHOTS: Record<PresentationShotId, PresentationShot> = 
     mouthSafety: {
       jawOpenMax: 0.2,
       smileMax: 0.22,
+      stretchMax: 0.2,
+      lipRaiseMax: 0.08,
+      lipDropMax: 0.09,
+      puckerMax: 0.2,
+      funnelMax: 0.18,
+      tongueOutMax: 0,
+      dentalExposureMax: 0.17,
+      closedMouthBias: 0.14,
       description: 'Prefer stable head and eye motion over full mouth retargeting in live mode.',
     },
   },

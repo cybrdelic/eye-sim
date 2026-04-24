@@ -133,6 +133,7 @@ export default function MainRoute() {
     cubemapIntensity: number;
   };
 
+  const activeShotConfig = PRESENTATION_SHOTS[activeShot];
   const presentation = getPresentationShotPreset(activeShot, compactViewport);
 
   const applyPresentationShot = (shotId: PresentationShotId) => {
@@ -188,6 +189,7 @@ export default function MainRoute() {
               viewMode={viewMode}
               showCustomEyes={showCustomEyes}
               faceTracking={trackingEnabled ? faceTracking : null}
+              mouthSafety={activeShotConfig.mouthSafety}
               eyeProps={{ color1, color2, envMapIntensity, ior, thickness, animationMode, pupilSize }}
             />
           </group>
