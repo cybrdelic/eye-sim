@@ -1,35 +1,73 @@
 import { useGLTF } from '@react-three/drei';
-import { useFrame, useThree, createPortal } from '@react-three/fiber';
-import { useControls, folder } from 'leva';
+import { createPortal, type ThreeElements, useFrame, useThree } from '@react-three/fiber';
+import { button, folder, useControls } from 'leva';
+import type { ComponentProps } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useEffect, useMemo } from 'react';
 import { KTX2Loader } from 'three-stdlib';
+import type { FaceTwinTracking } from '../hooks/useMediaPipeFaceTwin';
+import {
+  adaptFacecapBlendshapes,
+  BEAUTY_SHADER_VERSION,
+  createDentalMaterial,
+  createSkinUniformRefs,
+  createWrinkleBeautyMaterial,
+  createWrinkleSimulationState,
+  createWrinkleUniformRefs,
+  FACS_CONTROL_DEFAULTS,
+  FACS_CONTROL_KEYS,
+  FACS_PREVIOUS_VALUES,
+  HEAD_RIG_TRACKING_MAP,
+  isDentalCandidateMesh,
+  type FaceViewMode,
+  type FacsControlKey,
+  type SkinShaderControls,
+  simulateWrinkleUniforms,
+  updateSkinUniforms,
+} from '../features/face/materials';
+import {
+  computeEyeBasisCorrection,
+  computeEyeFit,
+  computeEyeRotationLimitsFromScene,
+  createEyeLimitScratch,
+  getHeadForwardReference,
+  isDescendantOf,
+  isUnderCustomEyeRoot,
+  listEyeMeshes,
+  type EyeFit,
+  type EyeRotationLimits,
+  type EyeRotationLimitsMutable,
+} from '../features/face/eyeFit';
 import Eye from './Eye';
 
-export default function Face({ 
-  viewMode = 'beauty', 
-  showCustomEyes = true,
-  eyeScale = 0.85,
-  eyePosX = 0,
-  eyePosY = 0,
-  eyePosZ = 0,
-  eyeRotX = 0,
-  eyeRotY = 0,
-  eyeRotZ = 0,
-  eyeProps,
-  ...props 
-}: any) {
-  const gl = useThree((state) => state.gl);
+const FACECAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb';
+const DEV_LOGGING = import.meta.env.DEV;
+type FaceEyeProps = Omit<ComponentProps<typeof Eye>, 'trackedGaze' | 'saccadeTarget' | 'rotationLimits' | 'isRightEye' | 'blink'>;
 
-  // Load a properly rigged FACS model (contains ARKit blendshapes and bones)
-  const { scene } = useGLTF('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb', true, true, (loader) => {
+export type FaceProps = ThreeElements['group'] & {
+  viewMode?: FaceViewMode;
+  showCustomEyes?: boolean;
+  eyeProps: FaceEyeProps;
+  faceTracking?: FaceTwinTracking | null;
+};
+
+export default function Face({
+  viewMode = 'beauty',
+  showCustomEyes = true,
+  eyeProps,
+  faceTracking,
+  ...props
+}: FaceProps) {
+  const gl = useThree((state) => state.gl);
+  const camera = useThree((state) => state.camera);
+
+  const { scene } = useGLTF(FACECAP_URL, true, true, (loader) => {
     const ktx2Loader = new KTX2Loader();
     ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
     ktx2Loader.detectSupport(gl);
     loader.setKTX2Loader(ktx2Loader);
   });
 
-  // Extract all meshes that have morph targets (blendshapes)
   const morphMeshes = useMemo(() => {
     const meshes: THREE.Mesh[] = [];
     scene.traverse((child) => {
@@ -40,34 +78,57 @@ export default function Face({
     return meshes;
   }, [scene]);
 
-  // Extract nodes for skeletal animation (facecap uses regular objects, not Bones)
   const nodes = useMemo(() => {
-    const n: Record<string, THREE.Object3D> = {};
+    const next: Record<string, THREE.Object3D> = {};
     scene.traverse((child) => {
-      n[child.name] = child;
+      next[child.name] = child;
     });
-    return n;
+    return next;
   }, [scene]);
 
-  // Setup Leva controls for FACS Blendshapes (Morph Targets)
-  // These are standard ARKit facial action units
-  const facsControls = useControls('FACS Blendshapes (Muscles)', {
-    eyeBlink_L: { value: 0, min: 0, max: 1 },
-    eyeBlink_R: { value: 0, min: 0, max: 1 },
-    jawOpen: { value: 0, min: 0, max: 1 },
-    mouthSmile_L: { value: 0, min: 0, max: 1 },
-    mouthSmile_R: { value: 0, min: 0, max: 1 },
-    mouthFunnel: { value: 0, min: 0, max: 1 },
-    mouthPucker: { value: 0, min: 0, max: 1 },
-    browInnerUp: { value: 0, min: 0, max: 1 },
-    browDown_L: { value: 0, min: 0, max: 1 },
-    browDown_R: { value: 0, min: 0, max: 1 },
-    cheekPuff: { value: 0, min: 0, max: 1 },
-    noseSneer_L: { value: 0, min: 0, max: 1 },
-    noseSneer_R: { value: 0, min: 0, max: 1 },
+  const leftEyeNode = nodes.grp_eyeLeft || nodes.eyeLeft;
+  const rightEyeNode = nodes.grp_eyeRight || nodes.eyeRight;
+  const dynamicEyeLimitsEnabled = false;
+
+  const debugControls = useControls('Debug', {
+    'Eye Fit': folder({
+      showEyeHelpers: false,
+      showEyeBoundingSpheres: false,
+      showOriginalEyeMeshes: false,
+      dumpLeftEyeMeshes: button(() => {
+        const node = nodes.grp_eyeLeft || nodes.eyeLeft;
+        if (!node) return;
+        console.table(listEyeMeshes(node).map((mesh) => ({
+          name: mesh.name,
+          uuid: mesh.uuid,
+          radius: Number(mesh.radius.toFixed(5)),
+          worldRadius: Number(mesh.worldRadius.toFixed(5)),
+          sphericity: Number(mesh.sphericity.toFixed(3)),
+          vertexCount: mesh.vertexCount,
+          score: Number(mesh.score.toFixed(3)),
+          center: `(${mesh.center.x.toFixed(3)}, ${mesh.center.y.toFixed(3)}, ${mesh.center.z.toFixed(3)})`,
+          worldScale: `(${mesh.worldScale.x.toFixed(3)}, ${mesh.worldScale.y.toFixed(3)}, ${mesh.worldScale.z.toFixed(3)})`,
+        })));
+      }),
+      dumpRightEyeMeshes: button(() => {
+        const node = nodes.grp_eyeRight || nodes.eyeRight;
+        if (!node) return;
+        console.table(listEyeMeshes(node).map((mesh) => ({
+          name: mesh.name,
+          uuid: mesh.uuid,
+          radius: Number(mesh.radius.toFixed(5)),
+          worldRadius: Number(mesh.worldRadius.toFixed(5)),
+          sphericity: Number(mesh.sphericity.toFixed(3)),
+          vertexCount: mesh.vertexCount,
+          score: Number(mesh.score.toFixed(3)),
+          center: `(${mesh.center.x.toFixed(3)}, ${mesh.center.y.toFixed(3)}, ${mesh.center.z.toFixed(3)})`,
+          worldScale: `(${mesh.worldScale.x.toFixed(3)}, ${mesh.worldScale.y.toFixed(3)}, ${mesh.worldScale.z.toFixed(3)})`,
+        })));
+      }),
+    }),
   });
 
-  // Setup Leva controls for Bones (Skeletal Rig)
+  const facsControls = useControls('FACS Blendshapes (Muscles)', FACS_CONTROL_DEFAULTS);
   const boneControls = useControls('Skeletal Rig (Bones)', {
     headPitch: { value: 0, min: -1, max: 1 },
     headYaw: { value: 0, min: -1, max: 1 },
@@ -75,100 +136,495 @@ export default function Face({
     leftEyeYaw: { value: 0, min: -0.5, max: 0.5 },
     rightEyeYaw: { value: 0, min: -0.5, max: 0.5 },
   });
+  const skinShaderControls = useControls('Skin Shader', {
+    poreAoStrength: { value: 0.7, min: 0, max: 1.5, step: 0.01 },
+    displacementAmount: { value: 0.85, min: 0, max: 2, step: 0.01 },
+    sssStrength: { value: 1.2, min: 0, max: 2.5, step: 0.01 },
+    thicknessLip: { value: 1.4, min: 0.4, max: 2.5, step: 0.01 },
+    thicknessNose: { value: 0.92, min: 0.4, max: 2.0, step: 0.01 },
+    thicknessUnderEye: { value: 1.18, min: 0.4, max: 2.5, step: 0.01 },
+    thicknessCheek: { value: 1.08, min: 0.4, max: 2.5, step: 0.01 },
+    thicknessForehead: { value: 0.78, min: 0.3, max: 2.0, step: 0.01 },
+  }) as SkinShaderControls;
 
-  useFrame(() => {
-    // 1. Apply FACS Blendshapes (Muscle deformations)
-    morphMeshes.forEach((mesh) => {
-      if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-        Object.entries(facsControls).forEach(([name, value]) => {
-          const index = mesh.morphTargetDictionary![name];
-          if (index !== undefined) {
-            mesh.morphTargetInfluences![index] = value;
-          }
-        });
+  const leftRotationLimits = useMemo<EyeRotationLimitsMutable>(() => ({
+    yawMax: 0.55,
+    pitchUpMax: 0.35,
+    pitchDownMax: 0.45,
+    source: 'fallback',
+  }), []);
+  const rightRotationLimits = useMemo<EyeRotationLimitsMutable>(() => ({
+    yawMax: 0.55,
+    pitchUpMax: 0.35,
+    pitchDownMax: 0.45,
+    source: 'fallback',
+  }), []);
+  const leftLimitScratch = useMemo(() => createEyeLimitScratch(), []);
+  const rightLimitScratch = useMemo(() => createEyeLimitScratch(), []);
+  const sharedSaccadeTarget = useMemo(() => new THREE.Vector2(), []);
+  const sharedSaccadeState = useRef({ nextMoveTime: 0 });
+  const wrinkleUniformsRef = useRef(createWrinkleUniformRefs());
+  const wrinkleSimulationRef = useRef(createWrinkleSimulationState());
+  const skinUniformsRef = useRef(createSkinUniformRefs());
+  const eyeFitWarningsRef = useRef({
+    autoScale: false,
+    suspiciousSize: false,
+  });
+  const previousMorphValuesRef = useRef<Record<FacsControlKey, number>>({ ...FACS_PREVIOUS_VALUES });
+
+  const morphBindings = useMemo(() => {
+    return morphMeshes.map((mesh) => {
+      const indices = {} as Partial<Record<FacsControlKey, number>>;
+      for (const key of FACS_CONTROL_KEYS) {
+        const index = mesh.morphTargetDictionary?.[key];
+        if (index !== undefined) indices[key] = index;
       }
+      return { mesh, indices };
     });
+  }, [morphMeshes]);
 
-    // 2. Apply Bone Rotations (Rigid skeletal transformations)
-    const headNode = nodes['grp_transform'] || nodes['head'] || nodes['Head'];
-    if (headNode) {
-      headNode.rotation.x = boneControls.headPitch;
-      headNode.rotation.y = boneControls.headYaw;
-      headNode.rotation.z = boneControls.headRoll;
+  const headNode = nodes.grp_transform || nodes.head || nodes.Head;
+
+  const eyeFits = useMemo(() => {
+    scene.updateMatrixWorld(true);
+
+    const forwardRefWorld = getHeadForwardReference(headNode, camera);
+    const upRefWorld = new THREE.Vector3(0, 1, 0);
+    const camPos = camera.position.clone();
+    const left = leftEyeNode ? computeEyeFit(leftEyeNode, forwardRefWorld, upRefWorld, camPos) : null;
+    const right = rightEyeNode ? computeEyeFit(rightEyeNode, forwardRefWorld, upRefWorld, camPos) : null;
+
+    if (leftEyeNode && rightEyeNode && left?.fit && right?.fit) {
+      const leftPos = new THREE.Vector3();
+      const rightPos = new THREE.Vector3();
+      leftEyeNode.getWorldPosition(leftPos);
+      rightEyeNode.getWorldPosition(rightPos);
+      const interEyeDist = leftPos.distanceTo(rightPos);
+
+      const leftNodeScale = new THREE.Vector3();
+      const rightNodeScale = new THREE.Vector3();
+      leftEyeNode.getWorldScale(leftNodeScale);
+      rightEyeNode.getWorldScale(rightNodeScale);
+
+      const leftWorldRadius = Math.max(
+        Math.abs(leftNodeScale.x * left.fit.scale.x),
+        Math.abs(leftNodeScale.y * left.fit.scale.y),
+        Math.abs(leftNodeScale.z * left.fit.scale.z),
+      );
+      const rightWorldRadius = Math.max(
+        Math.abs(rightNodeScale.x * right.fit.scale.x),
+        Math.abs(rightNodeScale.y * right.fit.scale.y),
+        Math.abs(rightNodeScale.z * right.fit.scale.z),
+      );
+
+      const ratioL0 = interEyeDist > 0 ? leftWorldRadius / interEyeDist : Infinity;
+      const ratioR0 = interEyeDist > 0 ? rightWorldRadius / interEyeDist : Infinity;
+      const warnRatio = 0.45;
+      const rejectRatio = 0.60;
+      const minPreferred = 0.22;
+      const maxPreferred = 0.30;
+
+      const maxRatio0 = Math.max(ratioL0, ratioR0);
+      const minRatio0 = Math.min(ratioL0, ratioR0);
+
+      let scaleFactor = 1;
+      if (Number.isFinite(maxRatio0) && maxRatio0 > maxPreferred) {
+        scaleFactor = maxPreferred / maxRatio0;
+      } else if (Number.isFinite(minRatio0) && minRatio0 > 0 && minRatio0 < minPreferred) {
+        scaleFactor = minPreferred / minRatio0;
+      }
+
+      let leftWorldRadiusUsed = leftWorldRadius;
+      let rightWorldRadiusUsed = rightWorldRadius;
+      let ratioLUsed = ratioL0;
+      let ratioRUsed = ratioR0;
+
+      if (scaleFactor !== 1) {
+        left.fit.scale = left.fit.scale.clone().multiplyScalar(scaleFactor);
+        right.fit.scale = right.fit.scale.clone().multiplyScalar(scaleFactor);
+
+        leftWorldRadiusUsed = Math.max(
+          Math.abs(leftNodeScale.x * left.fit.scale.x),
+          Math.abs(leftNodeScale.y * left.fit.scale.y),
+          Math.abs(leftNodeScale.z * left.fit.scale.z),
+        );
+        rightWorldRadiusUsed = Math.max(
+          Math.abs(rightNodeScale.x * right.fit.scale.x),
+          Math.abs(rightNodeScale.y * right.fit.scale.y),
+          Math.abs(rightNodeScale.z * right.fit.scale.z),
+        );
+
+        ratioLUsed = interEyeDist > 0 ? leftWorldRadiusUsed / interEyeDist : Infinity;
+        ratioRUsed = interEyeDist > 0 ? rightWorldRadiusUsed / interEyeDist : Infinity;
+
+        left.debug.scaleAutoFactor = scaleFactor;
+        right.debug.scaleAutoFactor = scaleFactor;
+        left.debug.scaleAutoRatioBefore = ratioL0;
+        right.debug.scaleAutoRatioBefore = ratioR0;
+        left.debug.scaleAutoRatioAfter = ratioLUsed;
+        right.debug.scaleAutoRatioAfter = ratioRUsed;
+
+        if (!eyeFitWarningsRef.current.autoScale) {
+          eyeFitWarningsRef.current.autoScale = true;
+          if (DEV_LOGGING) {
+            console.info('[eye-fit] auto-calibrated eye scale', {
+              interEyeDist,
+              scaleFactor,
+              before: { leftRatio: ratioL0, rightRatio: ratioR0 },
+              after: { leftRatio: ratioLUsed, rightRatio: ratioRUsed },
+              preferred: { min: minPreferred, max: maxPreferred },
+            });
+          }
+        }
+      }
+
+      if ((ratioLUsed > warnRatio || ratioRUsed > warnRatio) && !eyeFitWarningsRef.current.suspiciousSize) {
+        eyeFitWarningsRef.current.suspiciousSize = true;
+        if (DEV_LOGGING) {
+          console.warn('[eye-fit] suspicious eye size ratio', {
+            interEyeDist,
+            left: { worldRadius: leftWorldRadiusUsed, ratio: ratioLUsed, picked: left.debug },
+            right: { worldRadius: rightWorldRadiusUsed, ratio: ratioRUsed, picked: right.debug },
+            warnRatio,
+            rejectRatio,
+          });
+        }
+      }
+
+      if (ratioLUsed > rejectRatio || ratioRUsed > rejectRatio) {
+        if (DEV_LOGGING) {
+          console.warn('[eye-fit] rejected implausible fit', {
+            interEyeDist,
+            left: { worldRadius: leftWorldRadiusUsed, ratio: ratioLUsed, picked: left.debug },
+            right: { worldRadius: rightWorldRadiusUsed, ratio: ratioRUsed, picked: right.debug },
+            rejectRatio,
+          });
+        }
+        return { left: null, right: null };
+      }
     }
 
-    const leftEyeNode = nodes['grp_eyeLeft'] || nodes['eyeLeft'];
-    if (leftEyeNode) leftEyeNode.rotation.y = boneControls.leftEyeYaw;
+    return { left, right };
+  }, [camera, headNode, leftEyeNode, rightEyeNode, scene]);
 
-    const rightEyeNode = nodes['grp_eyeRight'] || nodes['eyeRight'];
-    if (rightEyeNode) rightEyeNode.rotation.y = boneControls.rightEyeYaw;
+  const fallbackFit: EyeFit = useMemo(() => ({
+    position: new THREE.Vector3(0, 0, 0.02),
+    quaternion: new THREE.Quaternion(),
+    scale: new THREE.Vector3(0.85, 0.85, 0.85),
+  }), []);
+
+  const forwardForFallback = useMemo(() => getHeadForwardReference(headNode, camera), [camera, headNode]);
+  const upForFallback = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+
+  const leftFallbackQuat = useMemo(() => (
+    leftEyeNode
+      ? computeEyeBasisCorrection(leftEyeNode, forwardForFallback, upForFallback).quaternion
+      : fallbackFit.quaternion
+  ), [fallbackFit.quaternion, forwardForFallback, leftEyeNode, upForFallback]);
+
+  const rightFallbackQuat = useMemo(() => (
+    rightEyeNode
+      ? computeEyeBasisCorrection(rightEyeNode, forwardForFallback, upForFallback).quaternion
+      : fallbackFit.quaternion
+  ), [fallbackFit.quaternion, forwardForFallback, rightEyeNode, upForFallback]);
+
+  const leftFit = eyeFits.left?.fit ?? { ...fallbackFit, quaternion: leftFallbackQuat };
+  const rightFit = eyeFits.right?.fit ?? { ...fallbackFit, quaternion: rightFallbackQuat };
+
+  const occluderMeshes = useMemo(() => {
+    const occluders: THREE.Object3D[] = [];
+    for (const mesh of morphMeshes) {
+      if (isUnderCustomEyeRoot(mesh)) continue;
+      if (leftEyeNode && isDescendantOf(mesh, leftEyeNode)) continue;
+      if (rightEyeNode && isDescendantOf(mesh, rightEyeNode)) continue;
+      occluders.push(mesh);
+    }
+    return occluders;
+  }, [leftEyeNode, morphMeshes, rightEyeNode]);
+
+  const limitsUpdateRef = useRef({
+    lastT: -Infinity,
+    lastBlinkL: 0,
+    lastBlinkR: 0,
+    lastHeadQuat: new THREE.Quaternion(),
+    hasLastHeadQuat: false,
+    warnedLeftFallback: false,
+    warnedRightFallback: false,
   });
 
-  // Apply Materials based on view mode
-  useEffect(() => {
-    scene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mesh = child as THREE.Mesh;
-        
-        // Hide the built-in eyes if we are showing custom eyes
-        // In facecap.glb, the eyes are usually a specific material or sub-mesh
-        const name = mesh.name.toLowerCase();
-        const parentName = mesh.parent?.name.toLowerCase() || '';
-        if (showCustomEyes && (name.includes('eye') || parentName.includes('eye'))) {
-           mesh.visible = false;
-        } else {
-           mesh.visible = true;
-        }
+  useFrame((_, delta) => {
+    const t = performance.now() * 0.001;
+    const trackedBlendshapes = faceTracking?.status === 'tracking' ? faceTracking.blendshapes : null;
+    const trackedHead = faceTracking?.status === 'tracking' ? faceTracking.headRotation : null;
 
-        // Store original material on first load so we don't lose the texture maps
-        if (!mesh.userData.originalMaterial) {
-          mesh.userData.originalMaterial = mesh.material;
-        }
+    let morphsChanged = false;
+    const rawMorphValues = {} as Record<FacsControlKey, number>;
+    for (const key of FACS_CONTROL_KEYS) {
+      const nextValue = trackedBlendshapes?.[key] ?? facsControls[key];
+      rawMorphValues[key] = nextValue;
+    }
 
-        if (viewMode === 'beauty') {
-          const origMat = mesh.userData.originalMaterial as THREE.MeshStandardMaterial;
-          mesh.material = new THREE.MeshPhysicalMaterial({
-            map: origMat.map,
-            normalMap: origMat.normalMap,
-            color: origMat.map ? 0xffffff : "#f4d0b8",
-            roughness: 0.4,
-            transmission: 0.1, // Subsurface scattering effect
-            thickness: 1.5,
-            attenuationColor: new THREE.Color("#ff3311"),
-            attenuationDistance: 0.5,
-            clearcoat: 0.1,
-            clearcoatRoughness: 0.3,
-          });
-        } else if (viewMode === 'wireframe') {
-          mesh.material = new THREE.MeshBasicMaterial({ color: '#00ff00', wireframe: true });
-        } else if (viewMode === 'normals') {
-          mesh.material = new THREE.MeshNormalMaterial();
-        } else if (viewMode === 'depth') {
-          mesh.material = new THREE.MeshDepthMaterial();
-        } else if (viewMode === 'basic') {
-          mesh.material = new THREE.MeshBasicMaterial({ color: '#cccccc' });
+    const nextMorphValues = adaptFacecapBlendshapes(rawMorphValues);
+
+    for (const key of FACS_CONTROL_KEYS) {
+      if (Math.abs(nextMorphValues[key] - previousMorphValuesRef.current[key]) > 0.001) {
+        morphsChanged = true;
+      }
+    }
+
+    simulateWrinkleUniforms(
+      wrinkleUniformsRef.current,
+      wrinkleSimulationRef.current,
+      nextMorphValues,
+      delta,
+    );
+    updateSkinUniforms(skinUniformsRef.current, nextMorphValues, skinShaderControls);
+
+    if (morphsChanged) {
+      for (const binding of morphBindings) {
+        const influences = binding.mesh.morphTargetInfluences;
+        if (!influences) continue;
+
+        for (const key of FACS_CONTROL_KEYS) {
+          const index = binding.indices[key];
+          if (index !== undefined) influences[index] = nextMorphValues[key];
         }
       }
-    });
-  }, [scene, viewMode]);
 
-  const leftEyeNode = nodes['eyeLeft'] || nodes['grp_eyeLeft'];
-  const rightEyeNode = nodes['eyeRight'] || nodes['grp_eyeRight'];
+      previousMorphValuesRef.current = nextMorphValues;
+    }
+
+    if (headNode) {
+      const headPitch = trackedHead?.pitch ?? boneControls.headPitch;
+      const headYaw = trackedHead?.yaw ?? boneControls.headYaw;
+      const headRoll = trackedHead?.roll ?? boneControls.headRoll;
+
+      headNode.rotation.x = headPitch * HEAD_RIG_TRACKING_MAP.pitchSign;
+      headNode.rotation.y = headRoll * HEAD_RIG_TRACKING_MAP.rollToYSign;
+      headNode.rotation.z = headYaw * HEAD_RIG_TRACKING_MAP.yawToZSign;
+    }
+
+    if (leftEyeNode) leftEyeNode.rotation.y = trackedHead ? 0 : boneControls.leftEyeYaw;
+    if (rightEyeNode) rightEyeNode.rotation.y = trackedHead ? 0 : boneControls.rightEyeYaw;
+
+    if (!trackedHead && eyeProps?.animationMode === 'saccades' && t > sharedSaccadeState.current.nextMoveTime) {
+      const isMacro = Math.random() > 0.8;
+      if (isMacro) {
+        sharedSaccadeTarget.x = (Math.random() - 0.5) * 1.2;
+        sharedSaccadeTarget.y = (Math.random() - 0.5) * 0.8;
+      } else {
+        sharedSaccadeTarget.x += (Math.random() - 0.5) * 0.2;
+        sharedSaccadeTarget.y += (Math.random() - 0.5) * 0.2;
+      }
+
+      sharedSaccadeTarget.x = THREE.MathUtils.clamp(sharedSaccadeTarget.x, -0.8, 0.8);
+      sharedSaccadeTarget.y = THREE.MathUtils.clamp(sharedSaccadeTarget.y, -0.5, 0.5);
+
+      const pause = isMacro ? (Math.random() * 1.0 + 0.5) : (Math.random() * 0.2 + 0.05);
+      sharedSaccadeState.current.nextMoveTime = t + pause;
+    }
+
+    if (!dynamicEyeLimitsEnabled || !showCustomEyes || !occluderMeshes.length) return;
+
+    const minInterval = 0.10;
+    const blinkEps = 0.02;
+    const state = limitsUpdateRef.current;
+    const blinkL = facsControls.eyeBlink_L;
+    const blinkR = facsControls.eyeBlink_R;
+
+    const headQuat = new THREE.Quaternion();
+    if (headNode) headNode.getWorldQuaternion(headQuat);
+
+    let headChanged = false;
+    if (headNode) {
+      if (!state.hasLastHeadQuat) {
+        state.lastHeadQuat.copy(headQuat);
+        state.hasLastHeadQuat = true;
+        headChanged = true;
+      } else {
+        const dot = Math.abs(state.lastHeadQuat.dot(headQuat));
+        headChanged = dot < 0.9995;
+      }
+    }
+
+    const blinkChanged = Math.abs(blinkL - state.lastBlinkL) > blinkEps || Math.abs(blinkR - state.lastBlinkR) > blinkEps;
+    const timeOk = t - state.lastT > minInterval;
+    if (!timeOk || (!blinkChanged && !headChanged)) return;
+
+    state.lastT = t;
+    state.lastBlinkL = blinkL;
+    state.lastBlinkR = blinkR;
+    if (headNode) state.lastHeadQuat.copy(headQuat);
+
+    const eyeRadiusLocal = 1.03;
+
+    if (leftEyeNode) {
+      const result = computeEyeRotationLimitsFromScene({
+        eyeNode: leftEyeNode,
+        fit: leftFit,
+        eyeRadiusLocal,
+        occluders: occluderMeshes,
+        scratch: leftLimitScratch,
+      });
+      leftRotationLimits.yawMax = result.yawMax;
+      leftRotationLimits.pitchUpMax = result.pitchUpMax;
+      leftRotationLimits.pitchDownMax = result.pitchDownMax;
+      leftRotationLimits.source = result.source;
+      if (result.source === 'fallback' && !state.warnedLeftFallback) {
+        state.warnedLeftFallback = true;
+        if (DEV_LOGGING) {
+          console.warn('[eye-fit] left eye rotation limits fell back (raycast unreliable)', result);
+        }
+      }
+    }
+
+    if (rightEyeNode) {
+      const result = computeEyeRotationLimitsFromScene({
+        eyeNode: rightEyeNode,
+        fit: rightFit,
+        eyeRadiusLocal,
+        occluders: occluderMeshes,
+        scratch: rightLimitScratch,
+      });
+      rightRotationLimits.yawMax = result.yawMax;
+      rightRotationLimits.pitchUpMax = result.pitchUpMax;
+      rightRotationLimits.pitchDownMax = result.pitchDownMax;
+      rightRotationLimits.source = result.source;
+      if (result.source === 'fallback' && !state.warnedRightFallback) {
+        state.warnedRightFallback = true;
+        if (DEV_LOGGING) {
+          console.warn('[eye-fit] right eye rotation limits fell back (raycast unreliable)', result);
+        }
+      }
+    }
+  });
+
+  useEffect(() => {
+    scene.traverse((child) => {
+      if (!(child as THREE.Mesh).isMesh) return;
+
+      const mesh = child as THREE.Mesh;
+      if (isUnderCustomEyeRoot(mesh)) return;
+
+      if (mesh.userData.originalVisible === undefined) {
+        mesh.userData.originalVisible = mesh.visible;
+      }
+
+      const shouldHideOriginalEyeMesh =
+        showCustomEyes &&
+        !debugControls.showOriginalEyeMeshes &&
+        leftEyeNode &&
+        rightEyeNode &&
+        (isDescendantOf(mesh, leftEyeNode) || isDescendantOf(mesh, rightEyeNode));
+
+      mesh.visible = shouldHideOriginalEyeMesh ? false : (mesh.userData.originalVisible as boolean);
+
+      if (!mesh.userData.originalMaterial) {
+        mesh.userData.originalMaterial = mesh.material;
+      }
+
+      const materialCache = (mesh.userData.__viewModeMaterials ??= {}) as Record<string, THREE.Material>;
+      const cacheKey = viewMode === 'beauty'
+        ? `beauty:${BEAUTY_SHADER_VERSION}:${(mesh.userData.originalMaterial as THREE.Material)?.uuid ?? 'none'}`
+        : viewMode;
+      const dentalCacheKey = `dental:${(mesh.userData.originalMaterial as THREE.Material)?.uuid ?? 'none'}`;
+
+      if (viewMode === 'beauty') {
+        if (isDentalCandidateMesh(mesh, mesh.userData.originalMaterial as THREE.Material)) {
+          if (!materialCache[dentalCacheKey]) {
+            materialCache[dentalCacheKey] = createDentalMaterial(
+              mesh.userData.originalMaterial as THREE.Material,
+              mesh,
+            );
+          }
+
+          mesh.material = materialCache[dentalCacheKey] ?? (mesh.userData.originalMaterial as THREE.Material);
+          return;
+        }
+
+        if (!materialCache[cacheKey]) {
+          materialCache[cacheKey] = createWrinkleBeautyMaterial(
+            mesh.userData.originalMaterial as THREE.Material,
+            mesh,
+            wrinkleUniformsRef.current,
+            skinUniformsRef.current,
+          );
+        }
+
+        mesh.material = materialCache[cacheKey] ?? (mesh.userData.originalMaterial as THREE.Material);
+        return;
+      }
+
+      if (!materialCache[cacheKey]) {
+        if (viewMode === 'wireframe') {
+          materialCache[cacheKey] = new THREE.MeshBasicMaterial({ color: '#00ff00', wireframe: true });
+        } else if (viewMode === 'normals') {
+          materialCache[cacheKey] = new THREE.MeshNormalMaterial();
+        } else if (viewMode === 'depth') {
+          materialCache[cacheKey] = new THREE.MeshDepthMaterial();
+        } else if (viewMode === 'basic') {
+          materialCache[cacheKey] = new THREE.MeshBasicMaterial({ color: '#cccccc' });
+        }
+      }
+
+      if (materialCache[cacheKey]) {
+        mesh.material = materialCache[cacheKey];
+      }
+    });
+  }, [debugControls.showOriginalEyeMeshes, leftEyeNode, rightEyeNode, scene, showCustomEyes, viewMode]);
 
   return (
     <group {...props}>
       <primitive object={scene} />
       {showCustomEyes && leftEyeNode && createPortal(
-        <group position={[eyePosX, eyePosY, eyePosZ]} rotation={[eyeRotX, eyeRotY, eyeRotZ]} scale={eyeScale}>
-          <Eye {...eyeProps} isRightEye={false} />
+        <group
+          position={leftFit.position}
+          quaternion={leftFit.quaternion}
+          scale={leftFit.scale}
+          userData={{ __customEyeRoot: true }}
+        >
+          <Eye
+            {...eyeProps}
+            trackedGaze={faceTracking?.status === 'tracking' ? faceTracking.gaze.left : undefined}
+            saccadeTarget={sharedSaccadeTarget}
+            rotationLimits={leftRotationLimits}
+            isRightEye={false}
+            blink={faceTracking?.status === 'tracking' ? (faceTracking.blendshapes.eyeBlink_L ?? facsControls.eyeBlink_L) : facsControls.eyeBlink_L}
+          />
+          {debugControls.showEyeHelpers && <axesHelper args={[1.5]} />}
+          {debugControls.showEyeBoundingSpheres && (
+            <mesh>
+              <sphereGeometry args={[1, 24, 24]} />
+              <meshBasicMaterial wireframe color="#ffff00" />
+            </mesh>
+          )}
         </group>,
-        leftEyeNode
+        leftEyeNode,
       )}
       {showCustomEyes && rightEyeNode && createPortal(
-        <group position={[-eyePosX, eyePosY, eyePosZ]} rotation={[eyeRotX, -eyeRotY, -eyeRotZ]} scale={eyeScale}>
-          <Eye {...eyeProps} isRightEye={true} />
+        <group
+          position={rightFit.position}
+          quaternion={rightFit.quaternion}
+          scale={rightFit.scale}
+          userData={{ __customEyeRoot: true }}
+        >
+          <Eye
+            {...eyeProps}
+            trackedGaze={faceTracking?.status === 'tracking' ? faceTracking.gaze.right : undefined}
+            saccadeTarget={sharedSaccadeTarget}
+            rotationLimits={rightRotationLimits}
+            isRightEye
+            blink={faceTracking?.status === 'tracking' ? (faceTracking.blendshapes.eyeBlink_R ?? facsControls.eyeBlink_R) : facsControls.eyeBlink_R}
+          />
+          {debugControls.showEyeHelpers && <axesHelper args={[1.5]} />}
+          {debugControls.showEyeBoundingSpheres && (
+            <mesh>
+              <sphereGeometry args={[1, 24, 24]} />
+              <meshBasicMaterial wireframe color="#ffff00" />
+            </mesh>
+          )}
         </group>,
-        rightEyeNode
+        rightEyeNode,
       )}
     </group>
   );

@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local browser/test artifacts
+.playwright-cli/
+logs/
+output/
+public/cubemaps/

@@ -1,0 +1,154 @@
+{
+  "generatedAt": "2026-04-23T19:50:23.889Z",
+  "sourceAsset": "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/facecap.glb",
+  "payloadFile": "data\\conditioning\\facecapConditioning.json",
+  "headMeshName": "mesh_2",
+  "positionCount": 2694,
+  "meshRoles": {
+    "headSkin": [
+      "mesh_2"
+    ],
+    "eyes": [
+      "mesh_0",
+      "mesh_1"
+    ],
+    "teeth": [
+      "mesh_3"
+    ],
+    "mouthInterior": [],
+    "lashesOrBrows": []
+  },
+  "anchors": {
+    "leftEyeCenter": [
+      3905.155891,
+      10444.549767,
+      7956.693411
+    ],
+    "rightEyeCenter": [
+      7278.681607,
+      10444.613997,
+      7956.706447
+    ],
+    "eyeMidpoint": [
+      5591.918749,
+      10444.581882,
+      7956.699929
+    ],
+    "noseTip": [
+      5593,
+      13569,
+      9528
+    ],
+    "noseBase": [
+      5593,
+      13188,
+      10168
+    ],
+    "mouthCenter": [
+      5593,
+      12244,
+      12673
+    ],
+    "chin": [
+      5593,
+      11261,
+      14187
+    ],
+    "foreheadCenter": [
+      5593,
+      10735,
+      3413
+    ],
+    "faceOrigin": [
+      5593,
+      13018.08,
+      10618.9
+    ]
+  },
+  "frame": {
+    "origin": [
+      5593,
+      13018.08,
+      10618.9
+    ],
+    "right": [
+      1,
+      0.000019,
+      0.000004
+    ],
+    "up": [
+      0.000003,
+      0.022101,
+      -0.999756
+    ],
+    "forward": [
+      -0.000019,
+      0.999756,
+      0.022101
+    ],
+    "scaleX": 2428.938516,
+    "scaleYTop": 7153.682107,
+    "scaleYBottom": 2884.849052,
+    "scaleZFront": 526.675701,
+    "scaleZBack": 8494.825603
+  },
+  "maskChannels": {
+    "atlas01": [
+      "cheeks",
+      "nose",
+      "forehead",
+      "underEyes"
+    ],
+    "atlas02": [
+      "lips",
+      "chin",
+      "neckExclusion",
+      "wrinkleRegions"
+    ],
+    "atlas03": [
+      "philtrum",
+      "earExclusion",
+      "scalpExclusion",
+      "skinCoverage"
+    ],
+    "atlas04": [
+      "curvature",
+      "thickness",
+      "ambientOcclusion",
+      "cavity"
+    ],
+    "atlas05": [
+      "foreheadWrinkleL",
+      "foreheadWrinkleR",
+      "glabella",
+      "crowFeetL"
+    ],
+    "atlas06": [
+      "crowFeetR",
+      "nasolabialL",
+      "nasolabialR",
+      "noseWrinkle"
+    ]
+  },
+  "detailTextureSize": 256,
+  "detailTextureChannels": {
+    "baseMap": [
+      "albedoR",
+      "albedoG",
+      "albedoB",
+      "coverage"
+    ],
+    "dermalMap": [
+      "curvature",
+      "thickness",
+      "ambientOcclusion",
+      "cavity"
+    ],
+    "microMap": [
+      "sebum",
+      "vascular",
+      "wrinkleUnion",
+      "poreMask"
+    ]
+  }
+}

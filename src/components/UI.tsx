@@ -1,4 +1,20 @@
-import React from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  Activity,
+  Bug,
+  Camera,
+  CircleDot,
+  Eye,
+  Settings2,
+  SlidersHorizontal,
+  Smile,
+  Sparkles,
+  Sun,
+  UserRound,
+  Video,
+} from 'lucide-react';
+
+type FocusMode = 'portrait' | 'eyes' | 'mouth';
 
 interface UIProps {
   color1: string;
@@ -13,206 +29,486 @@ interface UIProps {
   setThickness: (v: number) => void;
   screenBrightness: number;
   setScreenBrightness: (v: number) => void;
-  lightingMode: 'webcam' | 'diagnostic';
-  setLightingMode: (v: 'webcam' | 'diagnostic') => void;
+  lightingMode: 'studio' | 'outdoor';
+  setLightingMode: (v: 'studio' | 'outdoor') => void;
+  trackingEnabled: boolean;
+  setTrackingEnabled: (v: boolean) => void;
+  trackingStatus: 'idle' | 'loading' | 'tracking' | 'error';
+  debugOverlayEnabled: boolean;
+  setDebugOverlayEnabled: (v: boolean) => void;
+  videoEnvEnabled: boolean;
+  setVideoEnvEnabled: (v: boolean) => void;
   animationMode: 'mouse' | 'calm' | 'saccades' | 'scanning';
   setAnimationMode: (v: 'mouse' | 'calm' | 'saccades' | 'scanning') => void;
   pupilSize: number;
   setPupilSize: (v: number) => void;
+  focusMode: FocusMode;
+  setFocusMode: (v: FocusMode) => void;
+  advancedRigOpen: boolean;
+  setAdvancedRigOpen: (v: boolean) => void;
 }
 
 const PRESETS = [
-  { name: 'Blue', c1: '#1e3a8a', c2: '#3b82f6' },
-  { name: 'Green', c1: '#14532d', c2: '#4ade80' },
-  { name: 'Brown', c1: '#451a03', c2: '#a16207' },
-  { name: 'Hazel', c1: '#3f6212', c2: '#ca8a04' },
-  { name: 'Violet', c1: '#4c1d95', c2: '#8b5cf6' },
-  { name: 'Red', c1: '#7f1d1d', c2: '#ef4444' },
+  { name: 'Aegean', c1: '#0f2f6f', c2: '#51a5ff' },
+  { name: 'Moss', c1: '#123b22', c2: '#6ee7a0' },
+  { name: 'Umber', c1: '#3a1605', c2: '#c5893f' },
+  { name: 'Hazel', c1: '#31410f', c2: '#d5a13d' },
+  { name: 'Steel', c1: '#1d3344', c2: '#b8d7e8' },
+  { name: 'Amber', c1: '#5a2106', c2: '#f6b44d' },
 ];
 
-export default function UI({ 
-  color1, setColor1, 
-  color2, setColor2,
-  envMapIntensity, setEnvMapIntensity,
-  ior, setIor,
-  thickness, setThickness,
-  screenBrightness, setScreenBrightness,
-  lightingMode, setLightingMode,
-  animationMode, setAnimationMode,
-  pupilSize, setPupilSize
+const FOCUS_OPTIONS: Array<{ value: FocusMode; label: string; icon: LucideIcon }> = [
+  { value: 'portrait', label: 'Face', icon: UserRound },
+  { value: 'eyes', label: 'Eyes', icon: Eye },
+  { value: 'mouth', label: 'Mouth', icon: Smile },
+];
+
+const LIGHTING_OPTIONS: Array<{ value: UIProps['lightingMode']; label: string; icon: LucideIcon }> = [
+  { value: 'studio', label: 'Studio', icon: Sparkles },
+  { value: 'outdoor', label: 'Outdoor', icon: Sun },
+];
+
+const ANIMATION_OPTIONS: Array<{ value: UIProps['animationMode']; label: string }> = [
+  { value: 'mouse', label: 'Cursor' },
+  { value: 'calm', label: 'Calm' },
+  { value: 'saccades', label: 'Saccades' },
+  { value: 'scanning', label: 'Scan' },
+];
+
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: string }) {
+  return (
+    <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
+      <Icon className="h-3.5 w-3.5" />
+      {children}
+    </div>
+  );
+}
+
+function PillButton({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+  title,
+}: {
+  active: boolean;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={title ?? label}
+      onClick={onClick}
+      className={cx(
+        'inline-flex items-center justify-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition',
+        active
+          ? 'border-white/25 bg-white text-neutral-950 shadow-[0_0_30px_rgba(255,255,255,0.14)]'
+          : 'border-white/10 bg-white/[0.045] text-white/62 hover:border-white/20 hover:bg-white/[0.08] hover:text-white',
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
+}
+
+function RangeControl({
+  label,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  format = (v) => v.toFixed(2),
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  format?: (value: number) => string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex items-center justify-between gap-3 text-[11px] text-white/55">
+        <span>{label}</span>
+        <span className="font-mono text-white/80">{format(value)}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(parseFloat(event.target.value))}
+        className="h-1.5 w-full cursor-pointer accent-white"
+      />
+    </label>
+  );
+}
+
+function StatusDot({ status, enabled }: { status: UIProps['trackingStatus']; enabled: boolean }) {
+  const color = enabled
+    ? {
+        idle: 'bg-white/35',
+        loading: 'bg-sky-300',
+        tracking: 'bg-emerald-300',
+        error: 'bg-red-300',
+      }[status]
+    : 'bg-white/25';
+
+  return <span className={cx('h-2 w-2 rounded-full shadow-[0_0_12px_currentColor]', color)} />;
+}
+
+export default function UI({
+  color1,
+  setColor1,
+  color2,
+  setColor2,
+  envMapIntensity,
+  setEnvMapIntensity,
+  ior,
+  setIor,
+  thickness,
+  setThickness,
+  screenBrightness,
+  setScreenBrightness,
+  lightingMode,
+  setLightingMode,
+  trackingEnabled,
+  setTrackingEnabled,
+  trackingStatus,
+  debugOverlayEnabled,
+  setDebugOverlayEnabled,
+  videoEnvEnabled,
+  setVideoEnvEnabled,
+  animationMode,
+  setAnimationMode,
+  pupilSize,
+  setPupilSize,
+  focusMode,
+  setFocusMode,
+  advancedRigOpen,
+  setAdvancedRigOpen,
 }: UIProps) {
   return (
-    <div className="absolute top-0 left-0 p-6 z-10 pointer-events-none w-full flex flex-col items-start gap-4">
-      <div className="pointer-events-auto bg-black/40 backdrop-blur-md border border-white/10 p-6 rounded-2xl shadow-2xl w-80">
-        <h1 className="text-2xl font-semibold tracking-tight text-white mb-1">Oculus</h1>
-        <p className="text-sm text-white/60 mb-6">Photorealistic procedural eye simulation</p>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-white/50 uppercase tracking-wider mb-2">
-              Presets
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {PRESETS.map((preset) => (
+    <>
+      <div className="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_50%_16%,rgba(255,241,219,0.09),transparent_30%),linear-gradient(180deg,rgba(0,0,0,0.18),transparent_38%,rgba(0,0,0,0.42))]" />
+
+      <div className="pointer-events-none absolute right-4 top-4 z-20 hidden sm:block">
+        <div className="rounded-full border border-white/10 bg-black/35 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/60 backdrop-blur-xl">
+          Eye Sim
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 p-3 sm:p-5">
+        <section className="pointer-events-auto mx-auto w-full max-w-md rounded-[1.45rem] border border-white/10 bg-[#080b10]/78 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.5)] backdrop-blur-2xl sm:hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-base font-semibold tracking-tight text-white">Digital face rig</h1>
+              <p className="mt-0.5 text-xs text-white/46">{trackingEnabled ? 'Live twin mode' : 'Presentation mode'}</p>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] text-white/60">
+              <StatusDot enabled={trackingEnabled} status={trackingStatus} />
+              {trackingEnabled ? trackingStatus : 'manual'}
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+            {FOCUS_OPTIONS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFocusMode(value)}
+                aria-label={`${label} view`}
+                className={cx(
+                  'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition',
+                  focusMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="flex gap-1.5">
+              {PRESETS.slice(0, 5).map((preset) => (
                 <button
                   key={preset.name}
+                  type="button"
+                  title={preset.name}
                   onClick={() => {
                     setColor1(preset.c1);
                     setColor2(preset.c2);
                   }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 border border-white/5 transition-colors text-white/80"
-                >
-                  {preset.name}
-                </button>
+                  className="h-7 w-7 rounded-full border border-white/15 shadow-inner transition hover:scale-105 hover:border-white/40"
+                  style={{ background: `radial-gradient(circle at 38% 40%, ${preset.c2}, ${preset.c1} 66%, #05070a 100%)` }}
+                />
               ))}
             </div>
-          </div>
 
-          <div className="h-px w-full bg-white/10 my-4" />
-
-          <div className="flex gap-4">
-            <div>
-              <label className="block text-xs font-medium text-white/50 uppercase tracking-wider mb-2">
-                Inner Color
-              </label>
-              <input 
-                type="color" 
-                value={color1} 
-                onChange={(e) => setColor1(e.target.value)}
-                className="w-12 h-12 rounded cursor-pointer bg-transparent border-0 p-0"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-white/50 uppercase tracking-wider mb-2">
-                Outer Color
-              </label>
-              <input 
-                type="color" 
-                value={color2} 
-                onChange={(e) => setColor2(e.target.value)}
-                className="w-12 h-12 rounded cursor-pointer bg-transparent border-0 p-0"
-              />
+            <div className="flex gap-1.5">
+              <PillButton active={trackingEnabled} icon={Activity} label="Tracking" onClick={() => setTrackingEnabled(!trackingEnabled)} />
+              <PillButton active={videoEnvEnabled} icon={Video} label="Reflections" onClick={() => setVideoEnvEnabled(!videoEnvEnabled)} />
+              <PillButton active={advancedRigOpen} icon={Settings2} label="Rig" onClick={() => setAdvancedRigOpen(!advancedRigOpen)} />
             </div>
           </div>
 
-          <div className="h-px w-full bg-white/10 my-4" />
+          <details className="mt-3 rounded-[1rem] border border-white/8 bg-white/[0.035] px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.16em] text-white/55">Controls</summary>
+            <div className="mt-3 max-h-[40vh] space-y-3 overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+                {LIGHTING_OPTIONS.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLightingMode(value)}
+                    className={cx(
+                      'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition',
+                      lightingMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-          <div>
-            <label className="block text-xs font-medium text-white/50 uppercase tracking-wider mb-2">
-              Lighting Mode
-            </label>
-            <div className="flex bg-white/5 rounded-lg p-1">
+              <div className="grid grid-cols-4 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+                {ANIMATION_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setAnimationMode(value)}
+                    className={cx(
+                      'rounded-full px-2 py-2 text-[11px] font-semibold transition',
+                      animationMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <RangeControl label="Pupil" value={pupilSize} min={0.05} max={0.35} step={0.01} onChange={setPupilSize} />
+              <RangeControl
+                label="Reflection"
+                value={envMapIntensity}
+                min={0}
+                max={10}
+                step={0.1}
+                onChange={setEnvMapIntensity}
+                format={(v) => v.toFixed(1)}
+              />
+              <RangeControl
+                label="Brightness"
+                value={screenBrightness}
+                min={0}
+                max={5}
+                step={0.1}
+                onChange={setScreenBrightness}
+                format={(v) => v.toFixed(1)}
+              />
+              <RangeControl label="IOR" value={ior} min={1} max={2} step={0.01} onChange={setIor} />
+              <RangeControl label="Cornea" value={thickness} min={0} max={1} step={0.01} onChange={setThickness} />
               <button
-                onClick={() => setLightingMode('webcam')}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  lightingMode === 'webcam' ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/80'
-                }`}
+                type="button"
+                onClick={() => setDebugOverlayEnabled(!debugOverlayEnabled)}
+                className={cx(
+                  'inline-flex w-full items-center justify-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition',
+                  debugOverlayEnabled
+                    ? 'border-amber-300/30 bg-amber-300/18 text-amber-50'
+                    : 'border-white/10 bg-white/[0.045] text-white/62 hover:border-white/20 hover:bg-white/[0.08] hover:text-white',
+                )}
               >
-                Webcam
-              </button>
-              <button
-                onClick={() => setLightingMode('diagnostic')}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  lightingMode === 'diagnostic' ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/80'
-                }`}
-              >
-                Diagnostic
+                <Bug className="h-4 w-4" />
+                {debugOverlayEnabled ? 'Hide tracker debug' : 'Show tracker debug'}
               </button>
             </div>
+          </details>
+        </section>
+
+        <section className="pointer-events-auto mx-auto hidden max-h-[52vh] w-full max-w-6xl overflow-y-auto rounded-[1.65rem] border border-white/10 bg-[#080b10]/75 p-3 shadow-[0_28px_90px_rgba(0,0,0,0.46)] backdrop-blur-2xl sm:block sm:p-4">
+          <div className="grid gap-3 lg:grid-cols-[0.9fr_1.15fr_1fr] xl:grid-cols-[1fr_1.2fr_1fr_1.15fr]">
+            <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.035] p-3">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <h1 className="text-lg font-semibold tracking-tight text-white">Digital face rig</h1>
+                  <p className="mt-0.5 text-xs text-white/46">
+                    {trackingEnabled ? 'Live twin mode' : 'Presentation mode'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] text-white/60">
+                  <StatusDot enabled={trackingEnabled} status={trackingStatus} />
+                  {trackingEnabled ? trackingStatus : 'manual'}
+                </div>
+              </div>
+
+              <SectionLabel icon={Camera}>Capture</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                <PillButton
+                  active={trackingEnabled}
+                  icon={Activity}
+                  label="Tracking"
+                  onClick={() => setTrackingEnabled(!trackingEnabled)}
+                  title="Toggle webcam face tracking"
+                />
+                <PillButton
+                  active={videoEnvEnabled}
+                  icon={Video}
+                  label="Reflections"
+                  onClick={() => setVideoEnvEnabled(!videoEnvEnabled)}
+                  title="Use webcam feed as reflection source"
+                />
+                <PillButton
+                  active={debugOverlayEnabled}
+                  icon={Bug}
+                  label="Debug"
+                  onClick={() => setDebugOverlayEnabled(!debugOverlayEnabled)}
+                  title="Show MediaPipe debug overlay"
+                />
+                <PillButton
+                  active={advancedRigOpen}
+                  icon={Settings2}
+                  label="Rig"
+                  onClick={() => setAdvancedRigOpen(!advancedRigOpen)}
+                  title="Show advanced rig controls"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.035] p-3">
+              <SectionLabel icon={CircleDot}>Iris</SectionLabel>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {PRESETS.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      title={preset.name}
+                      onClick={() => {
+                        setColor1(preset.c1);
+                        setColor2(preset.c2);
+                      }}
+                      className="h-9 w-9 rounded-full border border-white/15 shadow-inner transition hover:scale-105 hover:border-white/40"
+                      style={{ background: `radial-gradient(circle at 38% 40%, ${preset.c2}, ${preset.c1} 66%, #05070a 100%)` }}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    aria-label="Inner iris color"
+                    type="color"
+                    value={color1}
+                    onChange={(event) => setColor1(event.target.value)}
+                    className="h-9 w-9 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                  />
+                  <input
+                    aria-label="Outer iris color"
+                    type="color"
+                    value={color2}
+                    onChange={(event) => setColor2(event.target.value)}
+                    className="h-9 w-9 cursor-pointer rounded-full border-0 bg-transparent p-0"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <RangeControl label="Pupil" value={pupilSize} min={0.05} max={0.35} step={0.01} onChange={setPupilSize} />
+                <RangeControl
+                  label="Reflection"
+                  value={envMapIntensity}
+                  min={0}
+                  max={10}
+                  step={0.1}
+                  onChange={setEnvMapIntensity}
+                  format={(v) => v.toFixed(1)}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.035] p-3">
+              <SectionLabel icon={Eye}>View</SectionLabel>
+              <div className="grid grid-cols-3 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+                {FOCUS_OPTIONS.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFocusMode(value)}
+                    className={cx(
+                      'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition',
+                      focusMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+                {LIGHTING_OPTIONS.map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLightingMode(value)}
+                    className={cx(
+                      'flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition',
+                      lightingMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-1 rounded-full border border-white/8 bg-black/22 p-1">
+                {ANIMATION_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setAnimationMode(value)}
+                    className={cx(
+                      'rounded-full px-2 py-2 text-xs font-semibold transition',
+                      animationMode === value ? 'bg-white text-neutral-950' : 'text-white/56 hover:bg-white/8 hover:text-white',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[1.2rem] border border-white/8 bg-white/[0.035] p-3 lg:col-span-3 xl:col-span-1">
+              <SectionLabel icon={SlidersHorizontal}>Optics</SectionLabel>
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <RangeControl
+                  label="Brightness"
+                  value={screenBrightness}
+                  min={0}
+                  max={5}
+                  step={0.1}
+                  onChange={setScreenBrightness}
+                  format={(v) => v.toFixed(1)}
+                />
+                <RangeControl label="IOR" value={ior} min={1} max={2} step={0.01} onChange={setIor} />
+                <RangeControl label="Cornea" value={thickness} min={0} max={1} step={0.01} onChange={setThickness} />
+              </div>
+            </div>
           </div>
-
-          <div className="h-px w-full bg-white/10 my-4" />
-
-          <div>
-            <label className="block text-xs font-medium text-white/50 uppercase tracking-wider mb-2">
-              Animation Mode
-            </label>
-            <div className="grid grid-cols-2 gap-1 bg-white/5 rounded-lg p-1">
-              {(['mouse', 'calm', 'saccades', 'scanning'] as const).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setAnimationMode(mode)}
-                  className={`py-1.5 text-xs font-medium rounded-md transition-colors capitalize ${
-                    animationMode === mode ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/80'
-                  }`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="h-px w-full bg-white/10 my-4" />
-
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between mb-1">
-                <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Reflection Intensity</label>
-                <span className="text-xs text-white/80">{envMapIntensity.toFixed(1)}</span>
-              </div>
-              <input 
-                type="range" min="0" max="10" step="0.1" 
-                value={envMapIntensity} onChange={(e) => setEnvMapIntensity(parseFloat(e.target.value))}
-                className="w-full accent-white"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Screen Brightness</label>
-                <span className="text-xs text-white/80">{screenBrightness.toFixed(1)}</span>
-              </div>
-              <input 
-                type="range" min="0" max="5" step="0.1" 
-                value={screenBrightness} onChange={(e) => setScreenBrightness(parseFloat(e.target.value))}
-                className="w-full accent-white"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Pupil Size</label>
-                <span className="text-xs text-white/80">{pupilSize.toFixed(2)}</span>
-              </div>
-              <input 
-                type="range" min="0.05" max="0.35" step="0.01" 
-                value={pupilSize} onChange={(e) => setPupilSize(parseFloat(e.target.value))}
-                className="w-full accent-white"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Index of Refraction</label>
-                <span className="text-xs text-white/80">{ior.toFixed(2)}</span>
-              </div>
-              <input 
-                type="range" min="1.0" max="2.0" step="0.01" 
-                value={ior} onChange={(e) => setIor(parseFloat(e.target.value))}
-                className="w-full accent-white"
-              />
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <label className="text-xs font-medium text-white/50 uppercase tracking-wider">Cornea Thickness</label>
-                <span className="text-xs text-white/80">{thickness.toFixed(2)}</span>
-              </div>
-              <input 
-                type="range" min="0" max="1" step="0.01" 
-                value={thickness} onChange={(e) => setThickness(parseFloat(e.target.value))}
-                className="w-full accent-white"
-              />
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
-      
-      <div className="absolute bottom-6 right-6 pointer-events-auto">
-        <div className="bg-black/40 backdrop-blur-md border border-white/10 px-4 py-2 rounded-full text-xs text-white/50">
-          Move cursor to look around
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
