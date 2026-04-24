@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { APP_NAV_ITEMS } from '../routes/routeConfig';
+import { LAB_NAV_ITEMS, PRODUCT_NAV_ITEMS } from '../routes/routeConfig';
 
 type AppNavProps = {
   className?: string;
@@ -7,8 +7,11 @@ type AppNavProps = {
 
 export default function AppNav({ className = '' }: AppNavProps) {
   return (
-    <div className={`flex max-w-[calc(100vw-2rem)] flex-wrap gap-1.5 rounded-[1.45rem] border border-white/10 bg-black/45 px-3 py-2 text-xs backdrop-blur-xl sm:gap-2 sm:rounded-full sm:text-sm ${className}`.trim()}>
-      {APP_NAV_ITEMS.map((item) => (
+    <nav
+      aria-label="App navigation"
+      className={`flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-1.5 rounded-[1.45rem] border border-white/10 bg-black/45 px-3 py-2 text-xs backdrop-blur-xl sm:gap-2 sm:rounded-full sm:text-sm ${className}`.trim()}
+    >
+      {PRODUCT_NAV_ITEMS.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
@@ -21,6 +24,23 @@ export default function AppNav({ className = '' }: AppNavProps) {
           {item.label}
         </NavLink>
       ))}
-    </div>
+      <span className="mx-1 hidden h-4 w-px bg-white/15 sm:inline-block" aria-hidden="true" />
+      <span className="rounded-full border border-amber-300/15 bg-amber-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100/70">
+        Labs
+      </span>
+      {LAB_NAV_ITEMS.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          className={({ isActive }) => (
+            isActive
+              ? 'rounded-full bg-amber-300/16 px-3 py-1 text-amber-50'
+              : 'rounded-full px-3 py-1 text-stone-300 transition hover:bg-amber-300/10 hover:text-amber-50'
+          )}
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </nav>
   );
 }
