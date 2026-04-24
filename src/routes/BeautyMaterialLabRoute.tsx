@@ -13,6 +13,7 @@ import { createBeautyLabMaterialFactory, SEGMENT_COLORS } from '../features/beau
 import { BeautyBust, SceneGrade, StudioLightRig } from '../features/beauty-lab/scene';
 import { DEBUG_SEGMENTS, type BeautyMaterialMode, type DebugSegment, type FacecapConditioningData } from '../features/beauty-lab/types';
 import { createSkinUniforms } from '../features/beauty-lab/uniforms';
+import { probeWebGPUSession, type WebGPUSessionProbeResult } from '../utils/webgpuSession';
 
 function RouteShell({
   children,
@@ -106,6 +107,21 @@ function LoadingState({ message }: { message: string }) {
   );
 }
 
+function WebGPUFailureState({ result }: { result: WebGPUSessionProbeResult }) {
+  return (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="max-w-xl rounded-3xl border border-amber-300/20 bg-amber-100/10 px-6 py-5 text-amber-50 backdrop-blur-sm">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-300">WebGPU lab unavailable</p>
+        <h2 className="mt-3 text-xl font-semibold">This browser GPU session is not healthy enough to start the lab.</h2>
+        <p className="mt-3 text-sm leading-6 text-amber-50/85">{result.message}</p>
+        <p className="mt-3 text-xs leading-5 text-amber-50/60">
+          The main presentation route remains safe to use. This guard prevents the WebGPU lab from creating a renderer in a stale or unsupported page session.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function BeautyMaterialLabRoute() {
   const { showStats, exposure } = useControls('Lab', {
     showStats: false,
@@ -137,9 +153,14 @@ export default function BeautyMaterialLabRoute() {
   const [loadingError, setLoadingError] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<BeautyMaterialMode>('beauty');
   const [debugSegment, setDebugSegment] = React.useState<DebugSegment>('all-regions');
+  const [webgpuProbe, setWebgpuProbe] = React.useState<WebGPUSessionProbeResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    probeWebGPUSession().then((result) => {
+      if (!cancelled) setWebgpuProbe(result);
+    });
 
     loadFacecapConditioning()
       .then((data) => {
@@ -206,6 +227,11 @@ export default function BeautyMaterialLabRoute() {
     shadows: true,
     gl: (async (defaults: Record<string, unknown>) => {
       const canvas = defaults.canvas as HTMLCanvasElement;
+      const result = await probeWebGPUSession({ canvas });
+      if (!result.ok) {
+        setWebgpuProbe(result);
+        throw new Error(result.message);
+      }
       const renderer = new THREE_WEBGPU.WebGPURenderer({ canvas, antialias: true, forceWebGL: false });
       await renderer.init();
       return renderer;
@@ -216,7 +242,11 @@ export default function BeautyMaterialLabRoute() {
     <RouteShell mode={mode} setMode={setMode} debugSegment={debugSegment} setDebugSegment={setDebugSegment}>
       <Leva hidden={mode === 'debug'} collapsed={false} />
 
-      {!conditioningData || !materialFactory ? (
+      {!webgpuProbe ? (
+        <LoadingState message="Checking the WebGPU adapter and canvas context before starting the lab." />
+      ) : !webgpuProbe.ok ? (
+        <WebGPUFailureState result={webgpuProbe} />
+      ) : !conditioningData || !materialFactory ? (
         <LoadingState message={loadingError ? `Conditioning payload failed to load: ${loadingError}` : 'Loading the conditioned face payload and detail atlases for the beauty lab.'} />
       ) : (
         <>
